@@ -18,6 +18,7 @@ from typing import Literal
 import joblib
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from churnguard import __version__, config
@@ -171,6 +172,12 @@ def _score(frame: pd.DataFrame) -> list[Prediction]:
             )
         )
     return results
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    """Send anyone who opens the bare domain to the interactive docs."""
+    return RedirectResponse(url="/docs")
 
 
 @app.get("/health", tags=["ops"])

@@ -53,6 +53,13 @@ def test_health_reports_a_loaded_model(client):
     assert 0 < body["threshold"] < 1
 
 
+def test_root_redirects_to_the_docs(client):
+    """Anyone opening the bare domain should land somewhere useful, not a 404."""
+    response = client.get("/", follow_redirects=False)
+    assert response.status_code in (307, 308)
+    assert response.headers["location"] == "/docs"
+
+
 def test_predict_returns_a_valid_probability(client):
     response = client.post("/predict", json=HIGH_RISK)
     assert response.status_code == 200

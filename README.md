@@ -101,7 +101,7 @@ cd churn-guard
 
 pip install -e ".[dev]"     # install
 python -m churnguard.train  # download data, train, evaluate, write figures (~35s)
-pytest                      # 21 tests
+pytest                      # 22 tests
 uvicorn churnguard.api:app --reload
 ```
 
@@ -192,7 +192,7 @@ churn-guard/
 │   ├── train.py        model comparison, selection, model card
 │   ├── evaluate.py     metrics, threshold optimisation, figures
 │   └── api.py          FastAPI serving layer
-├── tests/              21 tests: data contracts, features, costs, API
+├── tests/              22 tests: data contracts, features, costs, API
 ├── reports/            metrics.json + generated figures
 ├── models/             fitted pipeline + model card
 ├── .github/workflows/  CI on Python 3.10 / 3.11 / 3.12
@@ -233,7 +233,7 @@ stakeholder actually asks: *how much worse is this model without that column?*
 pytest -v
 ```
 
-21 tests across four areas:
+22 tests across four areas:
 
 - **Data contracts** — the target is binary, the zero-tenure fix holds, the split is stratified, and
   neither the target nor the customer ID can leak into features.
