@@ -1,0 +1,17 @@
+# Render blueprint - https://render.com/docs/blueprint-spec
+#
+# The model is trained during the build rather than committed, so the artifact
+# is always pickled by the exact scikit-learn build that will unpickle it. It
+# also means every deploy re-proves that the pipeline runs end to end on a
+# clean machine.
+services:
+  - type: web
+    name: churnguard-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -e . && python -m churnguard.train --skip-figures
+    startCommand: uvicorn churnguard.api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7

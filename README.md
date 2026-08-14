@@ -7,6 +7,9 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
+**[▶ Try the live API](https://churnguard-api.onrender.com/docs)** — score a customer in your browser.
+*(Free tier: the first request after a quiet spell takes ~50s to wake the instance.)*
+
 > Most churn projects stop at "85% accuracy." That number is worse than useless here — predicting
 > *nobody* churns scores 73% on this dataset. ChurnGuard optimises the thing the business actually
 > pays for: **the profit of the retention campaign the model triggers.**
