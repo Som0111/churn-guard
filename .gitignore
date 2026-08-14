@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage
+htmlcov/
+
+# Data - regenerate with `python -m churnguard.data` (the raw CSV is public)
+data/raw/*.csv
+data/processed/
+
+# Trained artifacts are rebuilt by `python -m churnguard.train`
+models/*.joblib
+
+# OS
+.DS_Store
+Thumbs.db

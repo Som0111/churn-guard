@@ -1,0 +1,150 @@
+{
+  "generated_at": "2026-08-14T18:13:35+00:00",
+  "dataset": {
+    "n_rows": 7043,
+    "n_features": 19,
+    "churn_rate": 0.2654,
+    "class_imbalance_ratio": 2.77,
+    "monthly_revenue_at_risk": 139130.85
+  },
+  "selected_model": "logistic_regression",
+  "leaderboard": [
+    {
+      "model": "logistic_regression",
+      "cv_roc_auc": 0.8474,
+      "cv_roc_auc_std": 0.0112,
+      "cv_pr_auc": 0.6598,
+      "cv_f1": 0.6304,
+      "fit_seconds": 9.29
+    },
+    {
+      "model": "random_forest",
+      "cv_roc_auc": 0.8465,
+      "cv_roc_auc_std": 0.0089,
+      "cv_pr_auc": 0.6613,
+      "cv_f1": 0.633,
+      "fit_seconds": 11.63
+    },
+    {
+      "model": "gradient_boosting",
+      "cv_roc_auc": 0.8435,
+      "cv_roc_auc_std": 0.0081,
+      "cv_pr_auc": 0.654,
+      "cv_f1": 0.6228,
+      "fit_seconds": 4.38
+    }
+  ],
+  "test_metrics_default_threshold": {
+    "threshold": 0.5,
+    "roc_auc": 0.8458,
+    "pr_auc": 0.6538,
+    "brier_score": 0.1657,
+    "accuracy": 0.7395,
+    "precision": 0.506,
+    "recall": 0.7941,
+    "f1": 0.6181
+  },
+  "test_metrics_tuned_threshold": {
+    "threshold": 0.5419,
+    "roc_auc": 0.8458,
+    "pr_auc": 0.6538,
+    "brier_score": 0.1657,
+    "accuracy": 0.7608,
+    "precision": 0.5343,
+    "recall": 0.7701,
+    "f1": 0.6309
+  },
+  "business_impact": {
+    "optimal_threshold": 0.5419,
+    "net_benefit_optimal": 16250.0,
+    "net_benefit_at_0.5": 15200.0,
+    "net_benefit_blanket_campaign": -14350.0,
+    "net_benefit_do_nothing": 0.0,
+    "uplift_vs_default": 1050.0,
+    "uplift_vs_blanket": 30600.0,
+    "benefit_per_customer": 11.53,
+    "customers_targeted": 539,
+    "churners_caught": 288,
+    "wasted_offers": 251,
+    "churners_missed": 86,
+    "assumptions": {
+      "offer_cost": 50.0,
+      "customer_lifetime_value": 500.0,
+      "offer_success_rate": 0.3,
+      "value_per_true_positive": 100.0
+    }
+  },
+  "top_drivers": [
+    {
+      "feature": "tenure",
+      "roc_auc_drop_when_shuffled": 0.14382,
+      "std": 0.00419
+    },
+    {
+      "feature": "TotalCharges",
+      "roc_auc_drop_when_shuffled": 0.07088,
+      "std": 0.00603
+    },
+    {
+      "feature": "Contract",
+      "roc_auc_drop_when_shuffled": 0.04267,
+      "std": 0.00418
+    },
+    {
+      "feature": "InternetService",
+      "roc_auc_drop_when_shuffled": 0.04124,
+      "std": 0.0086
+    },
+    {
+      "feature": "MonthlyCharges",
+      "roc_auc_drop_when_shuffled": 0.03951,
+      "std": 0.00633
+    },
+    {
+      "feature": "StreamingTV",
+      "roc_auc_drop_when_shuffled": 0.00531,
+      "std": 0.00257
+    },
+    {
+      "feature": "StreamingMovies",
+      "roc_auc_drop_when_shuffled": 0.00527,
+      "std": 0.00195
+    },
+    {
+      "feature": "OnlineSecurity",
+      "roc_auc_drop_when_shuffled": 0.00336,
+      "std": 0.00127
+    },
+    {
+      "feature": "TechSupport",
+      "roc_auc_drop_when_shuffled": 0.00324,
+      "std": 0.00074
+    },
+    {
+      "feature": "MultipleLines",
+      "roc_auc_drop_when_shuffled": 0.00322,
+      "std": 0.00101
+    },
+    {
+      "feature": "PaymentMethod",
+      "roc_auc_drop_when_shuffled": 0.0032,
+      "std": 0.00123
+    },
+    {
+      "feature": "PaperlessBilling",
+      "roc_auc_drop_when_shuffled": 0.00212,
+      "std": 0.00147
+    }
+  ],
+  "figures": [
+    "reports/figures/roc_pr_curves.png",
+    "reports/figures/profit_curve.png",
+    "reports/figures/confusion_matrix.png",
+    "reports/figures/calibration.png",
+    "reports/figures/feature_importance.png"
+  ],
+  "environment": {
+    "python": "3.14.6",
+    "random_state": 42
+  }
+}
