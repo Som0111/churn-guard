@@ -2,7 +2,7 @@
 
 **Cost-sensitive customer churn prediction — from raw CSV to a served API.**
 
-[![CI](https://github.com/USERNAME/churn-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/USERNAME/churn-guard/actions/workflows/ci.yml)
+[![CI](https://github.com/som0111/churn-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/som0111/churn-guard/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
@@ -93,7 +93,7 @@ values, so systematically overconfident probabilities would silently mis-price t
 ## Quickstart
 
 ```bash
-git clone https://github.com/USERNAME/churn-guard.git
+git clone https://github.com/som0111/churn-guard.git
 cd churn-guard
 
 pip install -e ".[dev]"     # install
