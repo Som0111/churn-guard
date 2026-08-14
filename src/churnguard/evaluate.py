@@ -66,7 +66,7 @@ def profit_curve(
 
     for threshold in thresholds:
         y_pred = (proba >= threshold).astype(int)
-        tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
+        _tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
         rows.append(
             {
                 "threshold": threshold,
@@ -95,7 +95,7 @@ def optimize_threshold(
     best = curve.loc[curve["net_benefit"].idxmax()]
 
     y_pred_default = (proba >= 0.5).astype(int)
-    tn, fp, fn, tp = confusion_matrix(y_true, y_pred_default, labels=[0, 1]).ravel()
+    _tn, fp, _fn, tp = confusion_matrix(y_true, y_pred_default, labels=[0, 1]).ravel()
     default_benefit = cost_model.net_benefit(int(tp), int(fp))
 
     # The two baselines a retention team could run without any model at all.

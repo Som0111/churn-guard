@@ -81,7 +81,7 @@ def summarize(df: pd.DataFrame) -> dict:
     """Headline numbers used by the README and the EDA report."""
     churn_rate = float(df[config.TARGET].mean())
     return {
-        "n_rows": int(len(df)),
+        "n_rows": len(df),
         "n_features": len(config.FEATURES),
         "churn_rate": round(churn_rate, 4),
         "class_imbalance_ratio": round((1 - churn_rate) / churn_rate, 2),
