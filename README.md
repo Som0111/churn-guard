@@ -132,6 +132,7 @@ without knowing what a probability is.
 
 | Endpoint | Purpose |
 |---|---|
+| `GET /` | Redirects to the interactive docs |
 | `POST /predict` | Score one customer |
 | `POST /predict/batch` | Score up to 1,000 in one call |
 | `GET /health` | Liveness + which model artifact is loaded |
@@ -145,6 +146,25 @@ docker run -p 8000:8000 churnguard
 ```
 
 The image trains the model at build time, so the container starts ready to serve.
+
+### Deployment
+
+The live instance runs on Render's free tier, configured by [`render.yaml`](render.yaml):
+
+```yaml
+buildCommand: pip install -e . && python -m churnguard.train --skip-figures
+startCommand: uvicorn churnguard.api:app --host 0.0.0.0 --port $PORT
+```
+
+**The model is trained during the build rather than committed.** Two reasons: the pickled artifact
+is always produced by the exact scikit-learn build that will load it, sidestepping version-skew
+bugs — and every deploy re-proves that the pipeline runs end to end on a clean machine.
+
+It works: the deployed instance returns `0.8336` for the customer above, byte-identical to a local
+run on a different OS and Python version. That is what the fixed `random_state` is for.
+
+Pushing to `main` triggers CI and a redeploy. Free instances sleep after 15 minutes idle, so the
+first request back takes ~50 seconds.
 
 ---
 
@@ -196,6 +216,7 @@ churn-guard/
 ├── reports/            metrics.json + generated figures
 ├── models/             fitted pipeline + model card
 ├── .github/workflows/  CI on Python 3.10 / 3.11 / 3.12
+├── render.yaml         free-tier deployment blueprint
 ├── Dockerfile
 └── Makefile
 ```
