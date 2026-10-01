@@ -7,7 +7,7 @@ name = "churnguard"
 version = "1.0.0"
 description = "Cost-sensitive customer churn prediction, from raw CSV to a served API"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
     "pandas>=2.0",
@@ -36,4 +36,4 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"

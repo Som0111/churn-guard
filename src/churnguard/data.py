@@ -5,7 +5,9 @@ Source: IBM Telco Customer Churn (7,043 customers, 21 columns).
 
 from __future__ import annotations
 
+import hashlib
 import logging
+from pathlib import Path
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -13,6 +15,26 @@ from sklearn.model_selection import train_test_split
 from churnguard import config
 
 logger = logging.getLogger(__name__)
+
+
+class DatasetIntegrityError(RuntimeError):
+    """The raw CSV does not match the pinned SHA-256."""
+
+
+def sha256_of(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def verify_checksum(content: bytes, source: str | Path) -> str:
+    """Return the SHA-256 of ``content`` or raise if it is not the pinned dataset."""
+    digest = sha256_of(content)
+    if digest != config.DATA_SHA256:
+        raise DatasetIntegrityError(
+            f"{source}: SHA-256 {digest} does not match the pinned "
+            f"{config.DATA_SHA256}. Delete the file and re-download, or update "
+            "config.DATA_SHA256 deliberately if the dataset was meant to change."
+        )
+    return digest
 
 
 def download(force: bool = False) -> None:
@@ -27,14 +49,16 @@ def download(force: bool = False) -> None:
     logger.info("Downloading dataset from %s", config.DATA_URL)
     response = requests.get(config.DATA_URL, timeout=60)
     response.raise_for_status()
+    verify_checksum(response.content, config.DATA_URL)  # never cache a bad file
     config.RAW_CSV.write_bytes(response.content)
     logger.info("Saved %s KB", len(response.content) // 1024)
 
 
 def load_raw() -> pd.DataFrame:
-    """Load the cached CSV, downloading it first if necessary."""
+    """Load the cached CSV (downloading it first if necessary), checksum-verified."""
     if not config.RAW_CSV.exists():
         download()
+    verify_checksum(config.RAW_CSV.read_bytes(), config.RAW_CSV)
     return pd.read_csv(config.RAW_CSV)
 
 

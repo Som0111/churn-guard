@@ -61,3 +61,15 @@ def test_splits_are_disjoint(clean_df):
     X_train, X_val, X_test, *_ = data.split(clean_df)
     idx = [set(X.index) for X in (X_train, X_val, X_test)]
     assert not (idx[0] & idx[1]) and not (idx[0] & idx[2]) and not (idx[1] & idx[2])
+
+
+def test_tampered_dataset_raises_integrity_error(tmp_path, monkeypatch):
+    tampered = tmp_path / "telco_churn.csv"
+    tampered.write_bytes(config.RAW_CSV.read_bytes() + b"\nX-0000,Male,0\n")
+    monkeypatch.setattr(config, "RAW_CSV", tampered)
+    with pytest.raises(data.DatasetIntegrityError, match="does not match"):
+        data.load_raw()
+
+
+def test_untampered_dataset_passes_checksum():
+    assert data.verify_checksum(config.RAW_CSV.read_bytes(), config.RAW_CSV) == config.DATA_SHA256

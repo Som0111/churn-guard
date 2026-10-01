@@ -3,7 +3,7 @@
 **Cost-sensitive customer churn prediction — from raw CSV to a served API.**
 
 [![CI](https://github.com/som0111/churn-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/som0111/churn-guard/actions/workflows/ci.yml)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
@@ -126,11 +126,18 @@ to tune the threshold, so the figures carry a small selection effect.
 git clone https://github.com/som0111/churn-guard.git
 cd churn-guard
 
-pip install -e ".[dev]"     # install
+pip install -c constraints.txt -e ".[dev]"   # pinned install
 python -m churnguard.train  # download data, train, evaluate, write figures (~35s)
-pytest                      # 29 tests
+pytest                      # 33 tests
 uvicorn churnguard.api:app --reload
 ```
+
+**Production Python is 3.12** (Docker, Render and the instructions here). CI runs 3.12 and also 3.11
+as a compatibility check. `pyproject.toml` is the single source of truth for dependencies;
+[`constraints.txt`](constraints.txt) pins every resolved version, so a fresh clone installs exactly
+what the reported metrics were produced with. To regenerate the pins after changing dependencies:
+resolve `pip install ".[dev]"` for Python 3.12 and write the result back to `constraints.txt`
+(NumPy is held below 2.5 and SciPy below 1.18 so the same pins also install on 3.11).
 
 Interactive API docs: <http://127.0.0.1:8000/docs>
 
@@ -172,14 +179,16 @@ docker build -t churnguard .
 docker run -p 8000:8000 churnguard
 ```
 
-The image trains the model at build time, so the container starts ready to serve.
+The image is based on `python:3.12.7-slim-bookworm`, installs with the pinned `constraints.txt`, and
+trains the model at build time, so the container starts ready to serve. Pass
+`--build-arg GIT_SHA=$(git rev-parse --short HEAD)` to record the commit in the model report.
 
 ### Deployment
 
 The live instance runs on Render's free tier, configured by [`render.yaml`](render.yaml):
 
 ```yaml
-buildCommand: pip install -e . && python -m churnguard.train --skip-figures
+buildCommand: pip install -c constraints.txt -e . && python -m churnguard.train --skip-figures
 startCommand: uvicorn churnguard.api:app --host 0.0.0.0 --port $PORT
 ```
 
@@ -240,11 +249,12 @@ churn-guard/
 │   ├── train.py        model comparison, selection, model card
 │   ├── evaluate.py     metrics, threshold optimisation, figures
 │   └── api.py          FastAPI serving layer
-├── tests/              29 tests: data contracts, features, costs, API
+├── tests/              33 tests: data contracts, integrity, provenance, features, costs, API
 ├── reports/            metrics.json + generated figures
 ├── models/             fitted pipeline + model card
-├── .github/workflows/  CI on Python 3.10 / 3.11 / 3.12
+├── .github/workflows/  CI on Python 3.12 (production) and 3.11 (compatibility)
 ├── render.yaml         free-tier deployment blueprint
+├── constraints.txt     pinned dependency versions (generated from pyproject.toml)
 ├── Dockerfile
 └── Makefile
 ```
@@ -285,10 +295,12 @@ stakeholder actually asks: *how much worse is this model without that column?*
 pytest -v
 ```
 
-29 tests across four areas:
+33 tests across five areas:
 
 - **Data contracts** — the target is binary, the zero-tenure fix holds, the train/validation/test
   splits are disjoint and stratified, and neither the target nor the customer ID can leak into features.
+- **Integrity and provenance** — a tampered dataset raises `DatasetIntegrityError`, and the model
+  report contains the git SHA, dataset hash, hyperparameters and library versions.
 - **Feature engineering** — zero tenure never divides by zero, add-on counting is correct.
 - **Cost model** — the confusion-matrix arithmetic, that the tuned threshold never loses to 0.5 on
   validation, that an optimum between old grid points is found, and that test labels never enter the search, plus ECE and reliability-table checks.
@@ -324,7 +336,19 @@ CI runs lint, a full training run, and the suite on three Python versions on eve
 
 [IBM Telco Customer Churn](https://raw.githubusercontent.com/IBM/telco-customer-churn-on-icp4d/master/data/Telco-Customer-Churn.csv)
 — 7,043 customers, 21 columns, 26.5% churn rate. Downloaded automatically on first run; not
-committed to the repo.
+committed to the repo. The file is verified against a pinned SHA-256 on download and on every load
+(`16320c9c…e91`, 970,457 bytes); a mismatch raises `DatasetIntegrityError` instead of silently
+training on different data.
+
+## Model provenance
+
+Every training run writes a `provenance` block to `reports/metrics.json` (served by `/metrics`):
+`model_version` (`<git sha>-<UTC timestamp>`), git SHA and whether the tree was dirty, dataset URL and
+SHA-256, selected estimator and its hyperparameters, calibration and threshold methods, NumPy /
+pandas / scikit-learn / SciPy / joblib / Python versions, and train / validation / test counts with
+class rates. The committed report was produced on Python 3.11.9 with the pinned versions; the same
+metrics came out of an earlier run on Python 3.14 with unpinned latest libraries, so the results
+are not sensitive to these versions on this machine. They have not been re-run on 3.12 or Linux.
 
 ## License
 

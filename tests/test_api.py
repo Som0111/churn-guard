@@ -114,3 +114,9 @@ def test_metrics_report_stores_ece_and_calibration_choice(client):
     assert 0 <= body["validation_metrics_tuned_threshold"]["ece"] <= 1
     assert 0 <= body["test_metrics_tuned_threshold"]["ece"] <= 1
     assert body["calibration_method"]
+
+
+def test_metrics_report_carries_provenance(client):
+    prov = client.get("/metrics").json()["provenance"]
+    assert prov["dataset"]["sha256"] == config.DATA_SHA256
+    assert prov["model_version"].startswith(prov["git_sha"])

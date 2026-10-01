@@ -10,11 +10,14 @@ Run with:  python -m churnguard.train
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import logging
+import os
 import platform
+import subprocess
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import joblib
 import numpy as np
@@ -242,6 +245,60 @@ def plot_importance(drivers: list[dict]) -> str:
     return evaluate._repo_relative(path)
 
 
+def _git(*args: str) -> str | None:
+    try:
+        out = subprocess.run(
+            ["git", *args], capture_output=True, text=True, cwd=config.ROOT, check=True
+        )
+        return out.stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def _final_estimator(model):
+    """The bare estimator inside a (possibly calibrated) fitted pipeline."""
+    if hasattr(model, "calibrated_classifiers_"):
+        model = model.calibrated_classifiers_[0].estimator
+    return model.named_steps["model"]
+
+
+def build_provenance(
+    model, calibration: str, splits: dict[str, pd.Series], trained_at: datetime
+) -> dict:
+    """Everything needed to say exactly which data, code and libraries made a model."""
+    # GIT_SHA lets a Docker build (which has no .git) record the commit it was built from.
+    git_sha = os.environ.get("GIT_SHA") or _git("rev-parse", "--short", "HEAD") or "unknown"
+    stamp = trained_at.strftime("%Y%m%dT%H%M%SZ")
+    params = {
+        k: v if isinstance(v, (int, float, str, bool, type(None))) else str(v)
+        for k, v in _final_estimator(model).get_params().items()
+    }
+    return {
+        "model_version": f"{git_sha}-{stamp}",
+        "git_sha": git_sha,
+        "git_dirty": bool(_git("status", "--porcelain")),
+        "trained_at": trained_at.isoformat(timespec="seconds"),
+        "dataset": {"source_url": config.DATA_URL, "sha256": config.DATA_SHA256},
+        "estimator": type(_final_estimator(model)).__name__,
+        "estimator_hyperparameters": params,
+        "calibration_method": calibration,
+        "threshold_method": (
+            "profit-maximising over every unique validation probability (plus 0 and 1), "
+            "under the config.CostModel assumptions; tuned on validation only"
+        ),
+        "splits": {
+            name: {"n": len(y), "churn_rate": round(float(y.mean()), 4)}
+            for name, y in splits.items()
+        },
+        "dependencies": {
+            name: importlib.metadata.version(name)
+            for name in ("numpy", "pandas", "scikit-learn", "scipy", "joblib")
+        },
+        "python": platform.python_version(),
+        "random_state": config.RANDOM_STATE,
+    }
+
+
 def main(skip_figures: bool = False) -> dict:
     config.ensure_dirs()
 
@@ -300,8 +357,17 @@ def main(skip_figures: bool = False) -> dict:
         )
         figures.append(plot_importance(drivers))
 
+    trained_at = datetime.now(UTC)
+    provenance = build_provenance(
+        pipeline,
+        calibration,
+        {"train": y_train, "validation": y_val, "test": y_test},
+        trained_at,
+    )
+
     joblib.dump(
         {
+            "model_version": provenance["model_version"],
             "pipeline": pipeline,
             "threshold": threshold,
             "model_name": best_name,
@@ -312,7 +378,8 @@ def main(skip_figures: bool = False) -> dict:
     logger.info("Model saved to %s", config.MODEL_PATH)
 
     report = {
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": provenance["trained_at"],
+        "provenance": provenance,
         "dataset": dataset_summary,
         "selected_model": best_name,
         "calibration_method": calibration,
@@ -331,10 +398,6 @@ def main(skip_figures: bool = False) -> dict:
         "business_impact": threshold_report,
         "top_drivers": drivers,
         "figures": figures,
-        "environment": {
-            "python": platform.python_version(),
-            "random_state": config.RANDOM_STATE,
-        },
     }
 
     evaluate.save_metrics(report)

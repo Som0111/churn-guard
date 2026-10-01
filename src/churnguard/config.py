@@ -31,6 +31,9 @@ DATA_URL = (
     "https://raw.githubusercontent.com/IBM/telco-customer-churn-on-icp4d/"
     "master/data/Telco-Customer-Churn.csv"
 )
+# SHA-256 of the raw CSV (970,457 bytes). A mismatch means the upstream file
+# changed or the cached copy was altered, so every number downstream would drift.
+DATA_SHA256 = "16320c9c1ec72448db59aa0a26a0b95401046bef5d02fd3aeb906448e3055e91"
 
 # --------------------------------------------------------------------------- #
 # Schema

@@ -1,0 +1,15 @@
+.git
+.github
+.venv
+venv
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.ruff_cache
+data/raw
+models/*.joblib
+reports
+notebooks
+tests
+requirements.txt
