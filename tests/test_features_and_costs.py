@@ -10,11 +10,13 @@ from churnguard import features
 from churnguard.config import CostModel
 from churnguard.evaluate import (
     apply_threshold,
+    bootstrap_intervals,
     classification_metrics,
     expected_calibration_error,
     optimize_threshold,
     profit_curve,
     reliability_table,
+    sensitivity_grid,
 )
 
 
@@ -196,3 +198,52 @@ def test_threshold_extremes_and_ties():
     assert apply_threshold(y, p, 1.0)["customers_targeted"] == 0  # no one (p < 1)
     assert apply_threshold(y, p, 0.4)["customers_targeted"] == 3  # >= includes the tie
     assert apply_threshold(y, p, 0.4000001)["customers_targeted"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# Bootstrap intervals and sensitivity grid
+# --------------------------------------------------------------------------- #
+def _scored_sample(seed=0, n=600):
+    rng = np.random.default_rng(seed)
+    y = rng.binomial(1, 0.27, size=n)
+    p = np.clip(0.2 + 0.4 * y + rng.normal(0, 0.2, size=n), 0.001, 0.999)
+    return y, p
+
+
+def test_bootstrap_is_seeded_and_reproducible():
+    y, p = _scored_sample()
+    a = bootstrap_intervals(y, p, 0.4, n_resamples=200, seed=7)
+    b = bootstrap_intervals(y, p, 0.4, n_resamples=200, seed=7)
+    c = bootstrap_intervals(y, p, 0.4, n_resamples=200, seed=8)
+    assert a == b
+    assert a["profit_model"] != c["profit_model"]
+
+
+def test_bootstrap_interval_contains_the_point_estimate():
+    y, p = _scored_sample()
+    out = bootstrap_intervals(y, p, 0.4, n_resamples=300)
+    for key in ("profit_model", "profit_blanket", "roc_auc", "pr_auc", "precision", "recall"):
+        assert out[key]["low"] <= out[key]["point"] <= out[key]["high"], key
+    assert out["profit_do_nothing"] == {"point": 0.0, "low": 0.0, "high": 0.0}
+    point = apply_threshold(y, p, 0.4)
+    assert out["profit_model"]["point"] == point["net_benefit_optimal"]
+    assert out["profit_blanket"]["point"] == point["net_benefit_blanket_campaign"]
+
+
+def test_sensitivity_base_cell_matches_the_headline():
+    y, p = _scored_sample()
+    grid = sensitivity_grid(y, p, 0.4)
+    i, j = grid["offer_costs"].index(50.0), grid["offer_success_rates"].index(0.3)
+    base = apply_threshold(y, p, 0.4)
+    assert grid["model_profit"][i][j] == base["net_benefit_optimal"]
+    assert grid["blanket_profit"][i][j] == base["net_benefit_blanket_campaign"]
+    assert len(grid["model_profit"]) == 16 and len(grid["model_profit"][0]) == 9
+
+
+def test_sensitivity_blanket_wins_only_when_offers_are_cheap_and_effective():
+    """model - blanket = tn*cost - fn*(rate*CLV - cost): a corner of the grid, by arithmetic."""
+    y, p = _scored_sample()
+    grid = sensitivity_grid(y, p, 0.4)
+    adv = np.array(grid["model_minus_blanket"])
+    assert adv[-1, 0] > 0   # expensive offer, low success: targeting clearly helps
+    assert adv[0, -1] < adv[-1, 0]  # cheapest offer, best success: blanket gains ground

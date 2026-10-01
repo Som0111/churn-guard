@@ -337,6 +337,16 @@ def main(skip_figures: bool = False) -> dict:
     metrics_default = evaluate.classification_metrics(y_test.to_numpy(), proba, 0.5)
     metrics_tuned = evaluate.classification_metrics(y_test.to_numpy(), proba, threshold)
 
+    uncertainty = evaluate.bootstrap_intervals(y_test.to_numpy(), proba, threshold)
+    sensitivity = evaluate.sensitivity_grid(y_test.to_numpy(), proba, threshold)
+    profit_ci = uncertainty["profit_model"]
+    logger.info(
+        "Test profit $%s, 90%% interval [$%s, $%s]",
+        f"{profit_ci['point']:,.0f}",
+        f"{profit_ci['low']:,.0f}",
+        f"{profit_ci['high']:,.0f}",
+    )
+
     logger.info(
         "Test ROC-AUC %.4f | threshold %.4f (from validation) | test profit $%s",
         metrics_tuned["roc_auc"],
@@ -356,6 +366,7 @@ def main(skip_figures: bool = False) -> dict:
             variants={n: (y_val.to_numpy(), p) for n, p in val_variants.items()},
         )
         figures.append(plot_importance(drivers))
+        figures.append(evaluate.plot_sensitivity(sensitivity))
 
     trained_at = datetime.now(UTC)
     provenance = build_provenance(
@@ -396,6 +407,8 @@ def main(skip_figures: bool = False) -> dict:
         "test_metrics_tuned_threshold": metrics_tuned,
         # Test split, threshold frozen from validation.
         "business_impact": threshold_report,
+        "uncertainty": uncertainty,
+        "sensitivity": sensitivity,
         "top_drivers": drivers,
         "figures": figures,
     }

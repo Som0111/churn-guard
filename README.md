@@ -14,9 +14,10 @@
 > *nobody* churns scores 73% on this dataset. ChurnGuard optimises the thing the business actually
 > pays for: **the profit of the retention campaign the model triggers.**
 
-On a held-out test set of 1,409 customers, the model-targeted campaign returns **+$15,900** where the
-blanket "email everyone" campaign that most teams actually run **loses $14,350** — a **$30,250
-swing**, or **$11.28 of margin per customer scored**. The threshold behind that number was chosen on
+On a held-out test set of 1,409 customers, the model-targeted campaign returns **+$15,900 (90% interval $13,000 to $18,600)** where the
+blanket "email everyone" campaign that most teams actually run **loses $14,350** (interval −$18,850 to −$10,450) — a **$30,250
+swing**, or **$11.28 of margin per customer scored**. All dollar figures rest on assumed costs, not observed
+outcomes: a $50 offer, $500 customer value and a 30% save rate (see [sensitivity](#how-sensitive-is-this-to-the-assumptions)). The threshold behind that number was chosen on
 a separate validation split, not on the test set.
 
 ---
@@ -36,6 +37,24 @@ choosing the decision threshold, and **test** is scored once with that threshold
 | Recall @ tuned threshold | **67.7%** | 253 of 374 real churners caught |
 | Precision @ tuned threshold | 57.4% | Above the 33% break-even precision the cost model demands |
 | Accuracy | 78.1% | Reported last, on purpose — see below |
+
+### How certain is it?
+
+Bootstrap of the 1,409 test customers (1,000 seeded resamples, 90% percentile intervals) at the
+frozen 0.38 threshold:
+
+| Quantity | Point estimate | 90% interval |
+|---|---|---|
+| Model campaign profit | +$15,900 | $13,000 to $18,600 |
+| Blanket campaign profit | −$14,350 | −$18,850 to −$10,450 |
+| Do nothing | $0 | $0 |
+| ROC-AUC | 0.846 | 0.828 to 0.864 |
+| PR-AUC | 0.655 | 0.610 to 0.696 |
+| Precision | 57.4% | 53.3% to 61.2% |
+| Recall | 67.7% | 63.7% to 71.6% |
+
+This captures sampling noise in the test customers only. It does not include uncertainty in how the
+threshold was chosen, in the model fit, or — the biggest one — in the cost assumptions below.
 
 ### Model selection
 
@@ -66,7 +85,7 @@ the finding, not a disappointment.
 On the validation split the same threshold earns $16,950, so the gap to the test figure is the
 honest cost of tuning on one sample and scoring on another. All rows above are test-set numbers.
 
-Cost assumptions, all declared in [`config.py`](src/churnguard/config.py) and easy to change:
+**Assumptions, not observed outcomes.** Cost assumptions, all declared in [`config.py`](src/churnguard/config.py) and easy to change:
 a $50 retention offer, $500 customer lifetime value, and a 30% chance the offer actually saves a
 customer who was going to leave. That makes a caught churner worth **+$100** and a wasted offer
 worth **−$50**, so the campaign only breaks even above **33% precision** — which is exactly the
@@ -74,6 +93,20 @@ constraint the threshold search solves for.
 
 Move those three numbers and the optimal threshold moves with them. That is the point: the threshold
 is an output of the business model, not a hardcoded 0.5.
+
+### How sensitive is this to the assumptions?
+
+![Sensitivity heatmap](reports/figures/sensitivity_heatmap.png)
+
+The **$50 offer / $500 value / 30% save rate are assumptions, not measured results.** The grid above
+re-prices the *shipped* threshold (0.38, not re-tuned) across save rate 10–50% and offer cost $25–$100.
+
+- **The campaign loses money in 45 of 144 cells** — when the save rate is low relative to the offer
+  cost. At $50 per offer it needs about a 20% save rate to turn a profit (−$3,075 at 15%, +$3,250 at
+  20%); at $100 it needs about 35%. If the real save rate is 10%, this campaign loses $9,400 at $50.
+- **The model beats the blanket campaign in 140 of 144 cells.** Blanket mailing only ties or wins when
+  offers are very cheap and very effective ($25 at 40%+ save rate, $30 at 50%). Outside that corner,
+  targeting is worth it whatever the exact numbers are.
 
 ### What drives churn
 
@@ -128,7 +161,7 @@ cd churn-guard
 
 pip install -c constraints.txt -e ".[dev]"   # pinned install
 python -m churnguard.train  # download data, train, evaluate, write figures (~35s)
-pytest                      # 83 tests
+pytest                      # 87 tests
 uvicorn churnguard.api:app --reload
 ```
 
@@ -249,7 +282,7 @@ churn-guard/
 │   ├── train.py        model comparison, selection, model card
 │   ├── evaluate.py     metrics, threshold optimisation, figures
 │   └── api.py          FastAPI serving layer
-├── tests/              83 tests: data, validation, provenance, features, costs, API, training
+├── tests/              87 tests: data, validation, provenance, features, costs, API, training
 ├── reports/            metrics.json + generated figures
 ├── models/             fitted pipeline + model card
 ├── .github/workflows/  CI on Python 3.12 (production) and 3.11 (compatibility)
@@ -297,7 +330,7 @@ pytest -m "not integration"                  # skip the full training run (~6s)
 pytest --cov=churnguard --cov-report=term-missing
 ```
 
-83 tests across seven areas:
+87 tests across eight areas:
 
 - **Data contracts** — the target is binary, the zero-tenure fix holds, the train/validation/test
   splits are disjoint and stratified, and neither the target nor the customer ID can leak into features.
@@ -309,6 +342,8 @@ pytest --cov=churnguard --cov-report=term-missing
 - **Feature engineering** — zero tenure never divides by zero, add-on counting is correct.
 - **Cost model** — the confusion-matrix arithmetic, that the tuned threshold never loses to 0.5 on
   validation, that an optimum between old grid points is found, and that test labels never enter the search, plus ECE and reliability-table checks.
+- **Uncertainty** — the bootstrap is seeded and reproducible, its interval contains the point
+  estimate, and the sensitivity grid's $50 / 30% cell equals the headline profit.
 - **Edge cases** — single-class metrics fail loudly, all-identical predictions, threshold 0 / 1 and
   ties, and exact hand-computed values for every engineered feature.
 - **API** — runs against a small deterministic fixture model built in `tests/conftest.py`, so it

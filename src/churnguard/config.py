@@ -107,6 +107,8 @@ VAL_SIZE = 0.2   # threshold tuning only
 TEST_SIZE = 0.2  # final report only, scored once
 CV_FOLDS = 5
 CALIBRATION_TIE = 0.001  # Brier+ECE gap below which the simpler variant wins
+BOOTSTRAP_RESAMPLES = 1000
+BOOTSTRAP_LEVEL = 0.90   # central interval: 5th to 95th percentile
 
 
 # --------------------------------------------------------------------------- #

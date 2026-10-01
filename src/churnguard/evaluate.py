@@ -197,6 +197,168 @@ def optimize_threshold(
 
 
 # --------------------------------------------------------------------------- #
+# Uncertainty and sensitivity
+# --------------------------------------------------------------------------- #
+def bootstrap_intervals(
+    y_true: np.ndarray,
+    proba: np.ndarray,
+    threshold: float,
+    cost_model: CostModel = DEFAULT_COST_MODEL,
+    n_resamples: int = config.BOOTSTRAP_RESAMPLES,
+    level: float = config.BOOTSTRAP_LEVEL,
+    seed: int = config.RANDOM_STATE,
+) -> dict:
+    """Percentile bootstrap of the test set at a *frozen* threshold.
+
+    Captures sampling noise in the test customers only. It does not capture
+    uncertainty in the threshold choice, the cost assumptions, or the model fit.
+    """
+    y_true = np.asarray(y_true)
+    proba = np.asarray(proba)
+    n = len(y_true)
+    rng = np.random.default_rng(seed)
+
+    def stats(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
+        flagged = p >= threshold
+        tp = int(np.sum(flagged & (y == 1)))
+        fp = int(np.sum(flagged & (y == 0)))
+        positives = int(np.sum(y == 1))
+        return {
+            "profit_model": cost_model.net_benefit(tp, fp),
+            "profit_blanket": cost_model.net_benefit(positives, n - positives),
+            "profit_do_nothing": 0.0,
+            "roc_auc": roc_auc_score(y, p),
+            "pr_auc": average_precision_score(y, p),
+            "precision": tp / (tp + fp) if tp + fp else 0.0,
+            "recall": tp / positives if positives else 0.0,
+        }
+
+    point = stats(y_true, proba)
+    draws = {k: [] for k in point}
+    for _ in range(n_resamples):
+        idx = rng.integers(0, n, n)
+        if len(np.unique(y_true[idx])) < 2:  # vanishingly rare; AUC undefined
+            continue
+        for k, v in stats(y_true[idx], proba[idx]).items():
+            draws[k].append(v)
+
+    low, high = 100 * (1 - level) / 2, 100 * (1 + level) / 2
+    return {
+        "n_resamples": n_resamples,
+        "seed": seed,
+        "level": level,
+        "threshold": float(threshold),
+        "scope": "test-set sampling noise only, at the frozen threshold",
+        **{
+            k: {
+                "point": round(float(point[k]), 4),
+                "low": round(float(np.percentile(draws[k], low)), 4),
+                "high": round(float(np.percentile(draws[k], high)), 4),
+            }
+            for k in point
+        },
+    }
+
+
+def sensitivity_grid(
+    y_true: np.ndarray,
+    proba: np.ndarray,
+    threshold: float,
+    base: CostModel = DEFAULT_COST_MODEL,
+    rates: tuple[float, ...] = tuple(round(0.10 + 0.05 * i, 2) for i in range(9)),
+    costs: tuple[float, ...] = tuple(25.0 + 5.0 * i for i in range(16)),
+) -> dict:
+    """Test-set profit of the shipped threshold across offer success rate x offer cost.
+
+    The threshold is held fixed (it was tuned for the base assumptions), so this
+    shows how the *deployed* policy fares if the assumptions are wrong - not what
+    a re-tuned policy would earn.
+    """
+    y_true = np.asarray(y_true)
+    flagged = np.asarray(proba) >= threshold
+    tp = int(np.sum(flagged & (y_true == 1)))
+    fp = int(np.sum(flagged & (y_true == 0)))
+    positives, n = int(np.sum(y_true == 1)), len(y_true)
+
+    model, blanket = [], []
+    for cost in costs:
+        row_m, row_b = [], []
+        for rate in rates:
+            cm = CostModel(cost, base.customer_lifetime_value, rate)
+            row_m.append(round(cm.net_benefit(tp, fp), 2))
+            row_b.append(round(cm.net_benefit(positives, n - positives), 2))
+        model.append(row_m)
+        blanket.append(row_b)
+
+    m, b = np.array(model), np.array(blanket)
+    advantage = m - b
+
+    def first_rate(mask_row: np.ndarray) -> float | None:
+        hits = np.flatnonzero(mask_row)
+        return float(rates[hits[0]]) if len(hits) else None
+
+    return {
+        "threshold": float(threshold),
+        "customer_lifetime_value": base.customer_lifetime_value,
+        "offer_success_rates": list(rates),
+        "offer_costs": list(costs),
+        "model_profit": model,  # rows = offer cost, columns = success rate
+        "blanket_profit": blanket,
+        "model_minus_blanket": advantage.round(2).tolist(),
+        "cells_where_blanket_wins": int(np.sum(advantage <= 0)),
+        "cells_where_model_loses_money": int(np.sum(m < 0)),
+        "cells_total": int(m.size),
+        # per offer cost: lowest grid success rate at which the model beats blanket / is profitable
+        "min_success_rate_model_profitable": {
+            str(c): first_rate(m[i] > 0) for i, c in enumerate(costs)
+        },
+        "max_success_rate_model_beats_blanket": {
+            str(c): (
+                float(rates[np.flatnonzero(advantage[i] > 0)[-1]])
+                if np.any(advantage[i] > 0)
+                else None
+            )
+            for i, c in enumerate(costs)
+        },
+    }
+
+
+def plot_sensitivity(grid: dict) -> str:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    config.ensure_dirs()
+    rates, costs = grid["offer_success_rates"], grid["offer_costs"]
+    panels = [
+        ("Model campaign profit ($)", np.array(grid["model_profit"]), "RdBu"),
+        ("Model minus blanket campaign ($)", np.array(grid["model_minus_blanket"]), "RdBu"),
+    ]
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.8))
+    for ax, (title, values, cmap) in zip(axes, panels, strict=True):
+        limit = float(np.abs(values).max())
+        im = ax.imshow(
+            values, origin="lower", aspect="auto", cmap=cmap, vmin=-limit, vmax=limit
+        )
+        ax.contour(values, levels=[0], colors="black", linewidths=1.2)
+        ax.set_xticks(range(len(rates)), [f"{r:.0%}" for r in rates])
+        ax.set_yticks(range(0, len(costs), 3), [f"${costs[i]:.0f}" for i in range(0, len(costs), 3)])
+        ax.set_xlabel("Offer success rate (assumed)")
+        ax.set_ylabel("Offer cost (assumed)")
+        ax.set_title(title)
+        fig.colorbar(im, ax=ax)
+        base_x, base_y = rates.index(0.3), costs.index(50.0)
+        ax.plot(base_x, base_y, marker="o", color="black", markersize=7, fillstyle="none")
+    fig.suptitle("Sensitivity at the shipped threshold (black ring = $50 / 30% assumption)")
+    fig.tight_layout()
+    path = config.FIGURE_DIR / "sensitivity_heatmap.png"
+    fig.savefig(path, dpi=140)
+    plt.close(fig)
+    return _repo_relative(path)
+
+
+# --------------------------------------------------------------------------- #
 # Figures
 # --------------------------------------------------------------------------- #
 def generate_figures(
