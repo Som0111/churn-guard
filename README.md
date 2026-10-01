@@ -14,24 +14,27 @@
 > *nobody* churns scores 73% on this dataset. ChurnGuard optimises the thing the business actually
 > pays for: **the profit of the retention campaign the model triggers.**
 
-On a held-out set of 1,409 customers, the model-targeted campaign returns **+$16,250** where the
-blanket "email everyone" campaign that most teams actually run **loses $14,350** — a **$30,600
-swing**, or **$11.53 of margin per customer scored**.
+On a held-out test set of 1,409 customers, the model-targeted campaign returns **+$15,900** where the
+blanket "email everyone" campaign that most teams actually run **loses $14,350** — a **$30,250
+swing**, or **$11.28 of margin per customer scored**. The threshold behind that number was chosen on
+a separate validation split, not on the test set.
 
 ---
 
 ## Results
 
-Held-out test set (1,409 customers, never touched during training or model selection).
+Held-out test set (1,409 customers). Data is split 60/20/20 (4,225 train / 1,409 validation /
+1,409 test, stratified): **train** is for model selection (cross-validation), **validation** is for
+choosing the decision threshold, and **test** is scored once with that threshold frozen.
 
 | Metric | Value | Why it's here |
 |---|---|---|
 | **ROC-AUC** | **0.846** | Ranking quality — the part the model controls |
 | **PR-AUC** | **0.654** | Honest view under a 26.5% base rate |
-| Brier score | 0.166 | Probabilities are calibrated enough to price decisions on |
-| Recall @ tuned threshold | **77.0%** | 288 of 374 real churners caught |
-| Precision @ tuned threshold | 53.4% | Above the 33% break-even precision the cost model demands |
-| Accuracy | 76.1% | Reported last, on purpose — see below |
+| Brier score | 0.165 | Probabilities are calibrated enough to price decisions on |
+| Recall @ tuned threshold | **66.6%** | 249 of 374 real churners caught |
+| Precision @ tuned threshold | 58.0% | Above the 33% break-even precision the cost model demands |
+| Accuracy | 78.4% | Reported last, on purpose — see below |
 
 ### Model selection
 
@@ -39,9 +42,9 @@ Three candidates, 5-fold stratified cross-validation on the training split only.
 
 | Model | CV ROC-AUC | CV PR-AUC | CV F1 | Fit time |
 |---|---|---|---|---|
-| **Logistic regression** ✅ | **0.8474 ± 0.0112** | 0.6598 | 0.630 | 9.4s |
-| Random forest | 0.8465 ± 0.0089 | 0.6613 | 0.633 | 11.6s |
-| Gradient boosting (HistGB) | 0.8435 ± 0.0081 | 0.6540 | 0.623 | 4.4s |
+| **Logistic regression** ✅ | **0.8501 ± 0.0135** | 0.6659 | 0.633 | 6.8s |
+| Random forest | 0.8482 ± 0.0116 | 0.6713 | 0.633 | 8.6s |
+| Gradient boosting (HistGB) | 0.8419 ± 0.0111 | 0.6578 | 0.624 | 2.9s |
 
 The tuned gradient booster did **not** beat regularised logistic regression, and the gap between all
 three is inside one standard deviation. When a linear model ties an ensemble, the linear model wins:
@@ -56,8 +59,11 @@ the finding, not a disappointment.
 |---|---|---|
 | Do nothing | $0 | 0 |
 | Blanket campaign (offer to everyone) | **−$14,350** | 1,409 |
-| Model @ default 0.50 threshold | +$15,200 | — |
-| **Model @ profit-tuned 0.54 threshold** | **+$16,250** | 539 |
+| Model @ default 0.50 threshold | +$15,400 | — |
+| **Model @ 0.64 threshold (tuned on validation)** | **+$15,900** | 429 |
+
+On the validation split the same threshold earns $17,150, so the gap to the test figure is the
+honest cost of tuning on one sample and scoring on another. All rows above are test-set numbers.
 
 Cost assumptions, all declared in [`config.py`](src/churnguard/config.py) and easy to change:
 a $50 retention offer, $500 customer lifetime value, and a 30% chance the offer actually saves a
@@ -74,11 +80,11 @@ is an output of the business model, not a hardcoded 0.5.
 
 Permutation importance on held-out data (drop in test ROC-AUC when a feature is shuffled):
 
-1. **`tenure`** (−0.144) — by a wide margin. Churn is overwhelmingly an early-life problem.
-2. **`TotalCharges`** (−0.071) — proxy for accumulated relationship value.
-3. **`Contract`** (−0.043) — month-to-month customers have no exit friction.
-4. **`InternetService`** (−0.041) — fiber customers churn hardest, the classic signal in this dataset.
-5. **`MonthlyCharges`** (−0.040) — price sensitivity.
+1. **`tenure`** (−0.372) — by a wide margin. Churn is overwhelmingly an early-life problem.
+2. **`TotalCharges`** (−0.096) — proxy for accumulated relationship value.
+3. **`Contract`** (−0.050) — month-to-month customers have no exit friction.
+4. **`MonthlyCharges`** (−0.037) — price sensitivity.
+5. **`InternetService`** (−0.026) — fiber customers churn hardest, the classic signal in this dataset.
 
 **Actionable read:** the highest-leverage intervention is moving new fiber customers onto an annual
 contract inside their first six months, not discounting the back book.
@@ -101,7 +107,7 @@ cd churn-guard
 
 pip install -e ".[dev]"     # install
 python -m churnguard.train  # download data, train, evaluate, write figures (~35s)
-pytest                      # 22 tests
+pytest                      # 26 tests
 uvicorn churnguard.api:app --reload
 ```
 
@@ -119,10 +125,10 @@ curl -X POST http://127.0.0.1:8000/predict \
 
 ```json
 {
-  "churn_probability": 0.8336,
+  "churn_probability": 0.8637,
   "will_churn": true,
   "risk_band": "high",
-  "threshold_used": 0.5419,
+  "threshold_used": 0.6429,
   "recommended_action": "Priority outreach: call within 48h and offer a contract upgrade."
 }
 ```
@@ -160,7 +166,7 @@ startCommand: uvicorn churnguard.api:app --host 0.0.0.0 --port $PORT
 is always produced by the exact scikit-learn build that will load it, sidestepping version-skew
 bugs — and every deploy re-proves that the pipeline runs end to end on a clean machine.
 
-It works: the deployed instance returns `0.8336` for the customer above, byte-identical to a local
+It worked at the previous commit: the deployed instance returned `0.8336` (pre-Fix-1 model) for the customer above, byte-identical to a local
 run on a different OS and Python version. That is what the fixed `random_state` is for.
 
 Pushing to `main` triggers CI and a redeploy. Free instances sleep after 15 minutes idle, so the
@@ -177,7 +183,7 @@ data/raw/telco_churn.csv
    data.clean()          fix TotalCharges dtype, handle 11 zero-tenure blanks,
         │                de-duplicate, encode target
         ▼
-   data.split()          stratified 80/20 hold-out
+   data.split()          stratified 60/20/20 train / validation / test
         │
         ▼
 ┌──────────────────────────── sklearn Pipeline ────────────────────────────┐
@@ -191,7 +197,8 @@ data/raw/telco_churn.csv
 └──────────────────────────────────────────────────────────────────────────┘
         │
         ▼
-  optimize_threshold()    maximise campaign profit under the cost model
+  optimize_threshold()    maximise campaign profit on the VALIDATION split;
+        │                 test is then scored once at that frozen threshold
         │
         ▼
   churn_pipeline.joblib ──────► FastAPI /predict
@@ -207,12 +214,12 @@ serving cannot drift apart — the single most common way a working model breaks
 churn-guard/
 ├── src/churnguard/
 │   ├── config.py       paths, schema, and the business cost model
-│   ├── data.py         download, clean, split
+│   ├── data.py         download, clean, 60/20/20 split
 │   ├── features.py     domain features + preprocessing pipeline
 │   ├── train.py        model comparison, selection, model card
 │   ├── evaluate.py     metrics, threshold optimisation, figures
 │   └── api.py          FastAPI serving layer
-├── tests/              22 tests: data contracts, features, costs, API
+├── tests/              26 tests: data contracts, features, costs, API
 ├── reports/            metrics.json + generated figures
 ├── models/             fitted pipeline + model card
 ├── .github/workflows/  CI on Python 3.10 / 3.11 / 3.12
@@ -237,10 +244,11 @@ honest and avoids synthesising customers who never existed.
 would quietly delete the newest customers, who are the highest-churn segment in the dataset. There's
 [a test](tests/test_data.py) pinning this.
 
-**Threshold tuned on the test set — and here's why that's acceptable.** The threshold is one scalar
-fitted after model selection, which was done entirely on cross-validated training folds. It is a
-deliberate, disclosed trade-off for a demonstration project. In production this belongs on a third
-validation split, and the profit estimate above should be read as an upper bound.
+**Three splits, three jobs.** Train is used for model selection (5-fold CV) only. The profit
+threshold is tuned on a separate validation split, searching every unique predicted probability (plus
+0 and 1) rather than a fixed grid. The test split is scored once at that frozen threshold, so the
+headline profit never saw test labels when its threshold was picked. The first version of this
+project tuned the threshold on the test set; fixing that moved the headline from +$16,250 to +$15,900.
 
 **Permutation importance, not `.coef_`.** Coefficients on one-hot encoded, scaled features are easy
 to misread. Permutation importance is measured on held-out data and answers the question a
@@ -254,12 +262,13 @@ stakeholder actually asks: *how much worse is this model without that column?*
 pytest -v
 ```
 
-22 tests across four areas:
+26 tests across four areas:
 
-- **Data contracts** — the target is binary, the zero-tenure fix holds, the split is stratified, and
-  neither the target nor the customer ID can leak into features.
+- **Data contracts** — the target is binary, the zero-tenure fix holds, the train/validation/test
+  splits are disjoint and stratified, and neither the target nor the customer ID can leak into features.
 - **Feature engineering** — zero tenure never divides by zero, add-on counting is correct.
-- **Cost model** — the confusion-matrix arithmetic, and that the tuned threshold never loses to 0.5.
+- **Cost model** — the confusion-matrix arithmetic, that the tuned threshold never loses to 0.5 on
+  validation, that an optimum between old grid points is found, and that test labels never enter the search.
 - **API** — schema validation rejects bad input, batch order is preserved, and a new month-to-month
   fiber customer must score higher than a two-year contract holder. That last one is a behavioural
   test: it fails if the pipeline is ever wired up backwards.

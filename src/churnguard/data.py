@@ -65,16 +65,27 @@ def load_clean() -> pd.DataFrame:
 
 
 def split(df: pd.DataFrame):
-    """Stratified train/test split on the churn label."""
+    """Stratified 60/20/20 train / validation / test split on the churn label.
+
+    train: model selection (CV). validation: threshold tuning. test: scored once.
+    """
     X = df[config.FEATURES]
     y = df[config.TARGET]
-    return train_test_split(
+    X_rest, X_test, y_rest, y_test = train_test_split(
         X,
         y,
         test_size=config.TEST_SIZE,
         random_state=config.RANDOM_STATE,
         stratify=y,
     )
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_rest,
+        y_rest,
+        test_size=config.VAL_SIZE / (1 - config.TEST_SIZE),
+        random_state=config.RANDOM_STATE,
+        stratify=y_rest,
+    )
+    return X_train, X_val, X_test, y_train, y_val, y_test
 
 
 def summarize(df: pd.DataFrame) -> dict:

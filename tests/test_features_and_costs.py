@@ -8,7 +8,7 @@ import pytest
 
 from churnguard import features
 from churnguard.config import CostModel
-from churnguard.evaluate import optimize_threshold, profit_curve
+from churnguard.evaluate import apply_threshold, optimize_threshold, profit_curve
 
 
 @pytest.fixture
@@ -73,12 +73,45 @@ def test_optimal_threshold_beats_the_default():
     assert report["uplift_vs_default"] >= 0
 
 
+def test_threshold_between_old_grid_points_is_found():
+    """Best cut sits at 0.5004 - inside the old 0.01-0.99 / 200-step grid cell."""
+    y_true = np.array([0, 0, 0, 1, 1, 1])
+    proba = np.array([0.10, 0.20, 0.30, 0.5004, 0.80, 0.90])
+    report = optimize_threshold(y_true, proba)
+    assert report["optimal_threshold"] == pytest.approx(0.5004)
+    old_grid = np.linspace(0.01, 0.99, 200)
+    assert not np.isclose(old_grid, 0.5004, atol=1e-6).any()
+    assert report["churners_caught"] == 3 and report["wasted_offers"] == 0
+
+
+def test_test_labels_never_enter_threshold_search():
+    """Flipping every 'test' label must not change the validation-tuned threshold."""
+    rng = np.random.default_rng(3)
+    y_val = rng.binomial(1, 0.3, size=400)
+    p_val = rng.uniform(size=400)
+    threshold = optimize_threshold(y_val, p_val)["optimal_threshold"]
+
+    p_test = rng.uniform(size=300)
+    a = apply_threshold(rng.binomial(1, 0.3, size=300), p_test, threshold)
+    b = apply_threshold(np.ones(300, dtype=int), p_test, threshold)
+    assert a["optimal_threshold"] == b["optimal_threshold"] == threshold
+
+
+def test_tuned_threshold_never_loses_to_default_on_validation():
+    for seed in range(20):
+        rng = np.random.default_rng(seed)
+        y = rng.binomial(1, 0.27, size=500)
+        p = np.clip(y * 0.3 + rng.uniform(size=500) * 0.7, 0, 1)
+        report = optimize_threshold(y, p)
+        assert report["net_benefit_optimal"] >= report["net_benefit_at_0.5"]
+
+
 def test_profit_curve_is_monotone_in_targeting():
     """Raising the threshold can only shrink the targeted population."""
     rng = np.random.default_rng(1)
     y_true = rng.binomial(1, 0.3, size=500)
     proba = rng.uniform(size=500)
 
-    curve = profit_curve(y_true, proba, n_steps=50)
+    curve = profit_curve(y_true, proba)
     targeted = curve["customers_targeted"].to_numpy()
     assert (np.diff(targeted) <= 0).all()

@@ -1,8 +1,8 @@
 """Training entry point.
 
-Trains three candidate models, selects on cross-validated ROC-AUC, tunes the
-decision threshold on profit, then writes the fitted pipeline, a model card and
-the report figures.
+Trains three candidate models, selects on cross-validated ROC-AUC (train split),
+tunes the profit threshold on the validation split, then scores the test split
+once at that frozen threshold and writes the pipeline, model card and figures.
 
 Run with:  python -m churnguard.train
 """
@@ -179,8 +179,10 @@ def main(skip_figures: bool = False) -> dict:
     dataset_summary = data.summarize(df)
     logger.info("Dataset: %s", dataset_summary)
 
-    X_train, X_test, y_train, y_test = data.split(df)
-    logger.info("Train %d rows / test %d rows", len(X_train), len(X_test))
+    X_train, X_val, X_test, y_train, y_val, y_test = data.split(df)
+    logger.info(
+        "Train %d / validation %d / test %d rows", len(X_train), len(X_val), len(X_test)
+    )
 
     logger.info("Cross-validating %d candidates", len(candidate_models()))
     leaderboard = compare_models(X_train, y_train)
@@ -190,15 +192,20 @@ def main(skip_figures: bool = False) -> dict:
     pipeline = build_pipeline(candidate_models()[best_name])
     pipeline.fit(X_train, y_train)
 
-    proba = pipeline.predict_proba(X_test)[:, 1]
-    threshold_report = evaluate.optimize_threshold(y_test.to_numpy(), proba)
-    threshold = threshold_report["optimal_threshold"]
+    # Threshold is tuned on validation only; test labels never enter the search.
+    proba_val = pipeline.predict_proba(X_val)[:, 1]
+    validation_impact = evaluate.optimize_threshold(y_val.to_numpy(), proba_val)
+    threshold = validation_impact["optimal_threshold"]
+    metrics_val = evaluate.classification_metrics(y_val.to_numpy(), proba_val, threshold)
 
+    # Test is scored once, at the frozen threshold.
+    proba = pipeline.predict_proba(X_test)[:, 1]
+    threshold_report = evaluate.apply_threshold(y_test.to_numpy(), proba, threshold)
     metrics_default = evaluate.classification_metrics(y_test.to_numpy(), proba, 0.5)
     metrics_tuned = evaluate.classification_metrics(y_test.to_numpy(), proba, threshold)
 
     logger.info(
-        "Test ROC-AUC %.4f | tuned threshold %.2f | campaign profit $%s",
+        "Test ROC-AUC %.4f | threshold %.4f (from validation) | test profit $%s",
         metrics_tuned["roc_auc"],
         threshold,
         f"{threshold_report['net_benefit_optimal']:,.0f}",
@@ -223,8 +230,16 @@ def main(skip_figures: bool = False) -> dict:
         "dataset": dataset_summary,
         "selected_model": best_name,
         "leaderboard": leaderboard.round(4).to_dict(orient="records"),
+        "split_sizes": {
+            "train": len(X_train),
+            "validation": len(X_val),
+            "test": len(X_test),
+        },
+        "validation_metrics_tuned_threshold": metrics_val,
+        "validation_business_impact": validation_impact,
         "test_metrics_default_threshold": metrics_default,
         "test_metrics_tuned_threshold": metrics_tuned,
+        # Test split, threshold frozen from validation.
         "business_impact": threshold_report,
         "top_drivers": drivers,
         "figures": figures,

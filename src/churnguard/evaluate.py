@@ -58,45 +58,57 @@ def profit_curve(
     y_true: np.ndarray,
     proba: np.ndarray,
     cost_model: CostModel = DEFAULT_COST_MODEL,
-    n_steps: int = 200,
 ) -> pd.DataFrame:
-    """Campaign profit at every candidate threshold."""
-    thresholds = np.linspace(0.01, 0.99, n_steps)
+    """Campaign profit at every threshold that changes a decision.
+
+    Candidates are the unique predicted probabilities plus 0 and 1, so the true
+    optimum is always on the list - there is no fixed grid to fall between.
+    """
+    y_true = np.asarray(y_true)
+    proba = np.asarray(proba)
+    positives = int(np.sum(y_true == 1))
     rows = []
 
-    for threshold in thresholds:
-        y_pred = (proba >= threshold).astype(int)
-        _tn, fp, fn, tp = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
+    for threshold in np.unique(np.concatenate([[0.0, 1.0], proba])):
+        flagged = proba >= threshold
+        tp = int(np.sum(flagged & (y_true == 1)))
+        fp = int(np.sum(flagged & (y_true == 0)))
         rows.append(
             {
                 "threshold": threshold,
-                "customers_targeted": int(tp + fp),
-                "churners_caught": int(tp),
-                "wasted_offers": int(fp),
-                "churners_missed": int(fn),
-                "net_benefit": cost_model.net_benefit(int(tp), int(fp)),
+                "customers_targeted": tp + fp,
+                "churners_caught": tp,
+                "wasted_offers": fp,
+                "churners_missed": positives - tp,
+                "net_benefit": cost_model.net_benefit(tp, fp),
             }
         )
 
     return pd.DataFrame(rows)
 
 
-def optimize_threshold(
+def apply_threshold(
     y_true: np.ndarray,
     proba: np.ndarray,
+    threshold: float,
     cost_model: CostModel = DEFAULT_COST_MODEL,
 ) -> dict:
-    """Pick the threshold that maximises campaign profit.
+    """Business outcome of a *fixed* threshold on this data - nothing is tuned.
 
-    Also reports the naive 0.5 threshold so the gain from optimising is
-    explicit rather than implied.
+    Also reports the naive 0.5 threshold and the no-model baselines so the gain
+    is explicit rather than implied. The threshold is kept unrounded: rounding
+    it could flip decisions on the very scores it was chosen from.
     """
-    curve = profit_curve(y_true, proba, cost_model)
-    best = curve.loc[curve["net_benefit"].idxmax()]
+    y_true = np.asarray(y_true)
+    proba = np.asarray(proba)
 
-    y_pred_default = (proba >= 0.5).astype(int)
-    _tn, fp, _fn, tp = confusion_matrix(y_true, y_pred_default, labels=[0, 1]).ravel()
-    default_benefit = cost_model.net_benefit(int(tp), int(fp))
+    def outcome(t: float) -> tuple[int, int]:
+        flagged = proba >= t
+        return int(np.sum(flagged & (y_true == 1))), int(np.sum(flagged & (y_true == 0)))
+
+    tp, fp = outcome(threshold)
+    benefit = cost_model.net_benefit(tp, fp)
+    default_benefit = cost_model.net_benefit(*outcome(0.5))
 
     # The two baselines a retention team could run without any model at all.
     n = len(y_true)
@@ -104,18 +116,18 @@ def optimize_threshold(
     blanket_benefit = cost_model.net_benefit(n_churners, n - n_churners)
 
     return {
-        "optimal_threshold": round(float(best["threshold"]), 4),
-        "net_benefit_optimal": round(float(best["net_benefit"]), 2),
+        "optimal_threshold": float(threshold),
+        "net_benefit_optimal": round(float(benefit), 2),
         "net_benefit_at_0.5": round(float(default_benefit), 2),
         "net_benefit_blanket_campaign": round(float(blanket_benefit), 2),
         "net_benefit_do_nothing": 0.0,
-        "uplift_vs_default": round(float(best["net_benefit"] - default_benefit), 2),
-        "uplift_vs_blanket": round(float(best["net_benefit"] - blanket_benefit), 2),
-        "benefit_per_customer": round(float(best["net_benefit"]) / n, 2),
-        "customers_targeted": int(best["customers_targeted"]),
-        "churners_caught": int(best["churners_caught"]),
-        "wasted_offers": int(best["wasted_offers"]),
-        "churners_missed": int(best["churners_missed"]),
+        "uplift_vs_default": round(float(benefit - default_benefit), 2),
+        "uplift_vs_blanket": round(float(benefit - blanket_benefit), 2),
+        "benefit_per_customer": round(float(benefit) / n, 2),
+        "customers_targeted": tp + fp,
+        "churners_caught": tp,
+        "wasted_offers": fp,
+        "churners_missed": n_churners - tp,
         "assumptions": {
             "offer_cost": cost_model.offer_cost,
             "customer_lifetime_value": cost_model.customer_lifetime_value,
@@ -123,6 +135,17 @@ def optimize_threshold(
             "value_per_true_positive": cost_model.true_positive_value,
         },
     }
+
+
+def optimize_threshold(
+    y_true: np.ndarray,
+    proba: np.ndarray,
+    cost_model: CostModel = DEFAULT_COST_MODEL,
+) -> dict:
+    """Pick the profit-maximising threshold on this data. Validation data only."""
+    curve = profit_curve(y_true, proba, cost_model)
+    best = float(curve.loc[curve["net_benefit"].idxmax(), "threshold"])
+    return apply_threshold(y_true, proba, best, cost_model)
 
 
 # --------------------------------------------------------------------------- #
@@ -191,7 +214,7 @@ def generate_figures(
         threshold,
         linestyle="--",
         color="#dc2626",
-        label=f"optimal = {threshold:.2f}",
+        label=f"chosen on validation = {threshold:.2f}",
     )
     ax.axvline(0.5, linestyle=":", color=muted, label="default = 0.50")
     ax.axhline(0, color="#334155", linewidth=0.8, label="do nothing")

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-14T18:13:35+00:00",
+  "generated_at": "2026-10-01T18:16:19+00:00",
   "dataset": {
     "n_rows": 7043,
     "n_features": 19,
@@ -11,62 +11,97 @@
   "leaderboard": [
     {
       "model": "logistic_regression",
-      "cv_roc_auc": 0.8474,
-      "cv_roc_auc_std": 0.0112,
-      "cv_pr_auc": 0.6598,
-      "cv_f1": 0.6304,
-      "fit_seconds": 9.29
+      "cv_roc_auc": 0.8501,
+      "cv_roc_auc_std": 0.0135,
+      "cv_pr_auc": 0.6659,
+      "cv_f1": 0.6332,
+      "fit_seconds": 6.76
     },
     {
       "model": "random_forest",
-      "cv_roc_auc": 0.8465,
-      "cv_roc_auc_std": 0.0089,
-      "cv_pr_auc": 0.6613,
-      "cv_f1": 0.633,
-      "fit_seconds": 11.63
+      "cv_roc_auc": 0.8482,
+      "cv_roc_auc_std": 0.0116,
+      "cv_pr_auc": 0.6713,
+      "cv_f1": 0.6325,
+      "fit_seconds": 8.56
     },
     {
       "model": "gradient_boosting",
-      "cv_roc_auc": 0.8435,
-      "cv_roc_auc_std": 0.0081,
-      "cv_pr_auc": 0.654,
-      "cv_f1": 0.6228,
-      "fit_seconds": 4.38
+      "cv_roc_auc": 0.8419,
+      "cv_roc_auc_std": 0.0111,
+      "cv_pr_auc": 0.6578,
+      "cv_f1": 0.6244,
+      "fit_seconds": 2.9
     }
   ],
-  "test_metrics_default_threshold": {
-    "threshold": 0.5,
-    "roc_auc": 0.8458,
-    "pr_auc": 0.6538,
-    "brier_score": 0.1657,
-    "accuracy": 0.7395,
-    "precision": 0.506,
-    "recall": 0.7941,
-    "f1": 0.6181
+  "split_sizes": {
+    "train": 4225,
+    "validation": 1409,
+    "test": 1409
   },
-  "test_metrics_tuned_threshold": {
-    "threshold": 0.5419,
-    "roc_auc": 0.8458,
-    "pr_auc": 0.6538,
-    "brier_score": 0.1657,
-    "accuracy": 0.7608,
-    "precision": 0.5343,
-    "recall": 0.7701,
-    "f1": 0.6309
+  "validation_metrics_tuned_threshold": {
+    "threshold": 0.6429,
+    "roc_auc": 0.8396,
+    "pr_auc": 0.6524,
+    "brier_score": 0.1655,
+    "accuracy": 0.7984,
+    "precision": 0.6082,
+    "recall": 0.6765,
+    "f1": 0.6405
   },
-  "business_impact": {
-    "optimal_threshold": 0.5419,
-    "net_benefit_optimal": 16250.0,
-    "net_benefit_at_0.5": 15200.0,
+  "validation_business_impact": {
+    "optimal_threshold": 0.6429111979740293,
+    "net_benefit_optimal": 17150.0,
+    "net_benefit_at_0.5": 15350.0,
     "net_benefit_blanket_campaign": -14350.0,
     "net_benefit_do_nothing": 0.0,
-    "uplift_vs_default": 1050.0,
-    "uplift_vs_blanket": 30600.0,
-    "benefit_per_customer": 11.53,
-    "customers_targeted": 539,
-    "churners_caught": 288,
-    "wasted_offers": 251,
-    "churners_missed": 86,
+    "uplift_vs_default": 1800.0,
+    "uplift_vs_blanket": 31500.0,
+    "benefit_per_customer": 12.17,
+    "customers_targeted": 416,
+    "churners_caught": 253,
+    "wasted_offers": 163,
+    "churners_missed": 121,
+    "assumptions": {
+      "offer_cost": 50.0,
+      "customer_lifetime_value": 500.0,
+      "offer_success_rate": 0.3,
+      "value_per_true_positive": 100.0
+    }
+  },
+  "test_metrics_default_threshold": {
+    "threshold": 0.5,
+    "roc_auc": 0.8464,
+    "pr_auc": 0.6563,
+    "brier_score": 0.1648,
+    "accuracy": 0.7431,
+    "precision": 0.5103,
+    "recall": 0.7914,
+    "f1": 0.6205
+  },
+  "test_metrics_tuned_threshold": {
+    "threshold": 0.6429,
+    "roc_auc": 0.8464,
+    "pr_auc": 0.6563,
+    "brier_score": 0.1648,
+    "accuracy": 0.7835,
+    "precision": 0.5804,
+    "recall": 0.6658,
+    "f1": 0.6202
+  },
+  "business_impact": {
+    "optimal_threshold": 0.6429111979740293,
+    "net_benefit_optimal": 15900.0,
+    "net_benefit_at_0.5": 15400.0,
+    "net_benefit_blanket_campaign": -14350.0,
+    "net_benefit_do_nothing": 0.0,
+    "uplift_vs_default": 500.0,
+    "uplift_vs_blanket": 30250.0,
+    "benefit_per_customer": 11.28,
+    "customers_targeted": 429,
+    "churners_caught": 249,
+    "wasted_offers": 180,
+    "churners_missed": 125,
     "assumptions": {
       "offer_cost": 50.0,
       "customer_lifetime_value": 500.0,
@@ -77,63 +112,63 @@
   "top_drivers": [
     {
       "feature": "tenure",
-      "roc_auc_drop_when_shuffled": 0.14382,
-      "std": 0.00419
+      "roc_auc_drop_when_shuffled": 0.37188,
+      "std": 0.00787
     },
     {
       "feature": "TotalCharges",
-      "roc_auc_drop_when_shuffled": 0.07088,
-      "std": 0.00603
+      "roc_auc_drop_when_shuffled": 0.09628,
+      "std": 0.00793
     },
     {
       "feature": "Contract",
-      "roc_auc_drop_when_shuffled": 0.04267,
-      "std": 0.00418
-    },
-    {
-      "feature": "InternetService",
-      "roc_auc_drop_when_shuffled": 0.04124,
-      "std": 0.0086
+      "roc_auc_drop_when_shuffled": 0.04994,
+      "std": 0.00494
     },
     {
       "feature": "MonthlyCharges",
-      "roc_auc_drop_when_shuffled": 0.03951,
-      "std": 0.00633
+      "roc_auc_drop_when_shuffled": 0.03689,
+      "std": 0.00559
+    },
+    {
+      "feature": "InternetService",
+      "roc_auc_drop_when_shuffled": 0.0264,
+      "std": 0.00697
     },
     {
       "feature": "StreamingTV",
-      "roc_auc_drop_when_shuffled": 0.00531,
-      "std": 0.00257
-    },
-    {
-      "feature": "StreamingMovies",
-      "roc_auc_drop_when_shuffled": 0.00527,
-      "std": 0.00195
-    },
-    {
-      "feature": "OnlineSecurity",
-      "roc_auc_drop_when_shuffled": 0.00336,
-      "std": 0.00127
-    },
-    {
-      "feature": "TechSupport",
-      "roc_auc_drop_when_shuffled": 0.00324,
-      "std": 0.00074
+      "roc_auc_drop_when_shuffled": 0.00313,
+      "std": 0.00214
     },
     {
       "feature": "MultipleLines",
-      "roc_auc_drop_when_shuffled": 0.00322,
-      "std": 0.00101
+      "roc_auc_drop_when_shuffled": 0.00291,
+      "std": 0.00107
+    },
+    {
+      "feature": "OnlineSecurity",
+      "roc_auc_drop_when_shuffled": 0.0028,
+      "std": 0.00102
+    },
+    {
+      "feature": "TechSupport",
+      "roc_auc_drop_when_shuffled": 0.00268,
+      "std": 0.00056
     },
     {
       "feature": "PaymentMethod",
-      "roc_auc_drop_when_shuffled": 0.0032,
-      "std": 0.00123
+      "roc_auc_drop_when_shuffled": 0.00245,
+      "std": 0.00108
+    },
+    {
+      "feature": "StreamingMovies",
+      "roc_auc_drop_when_shuffled": 0.00238,
+      "std": 0.00143
     },
     {
       "feature": "PaperlessBilling",
-      "roc_auc_drop_when_shuffled": 0.00212,
-      "std": 0.00147
+      "roc_auc_drop_when_shuffled": 0.00159,
+      "std": 0.00128
     }
   ],
   "figures": [

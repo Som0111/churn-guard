@@ -65,7 +65,8 @@ CATEGORICAL_FEATURES = [
 FEATURES = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 
 RANDOM_STATE = 42
-TEST_SIZE = 0.2
+VAL_SIZE = 0.2   # threshold tuning only
+TEST_SIZE = 0.2  # final report only, scored once
 CV_FOLDS = 5
 
 

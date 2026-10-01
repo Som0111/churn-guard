@@ -43,11 +43,21 @@ def test_all_declared_features_exist(clean_df):
 
 
 def test_split_is_stratified_and_leak_free(clean_df):
-    X_train, X_test, y_train, y_test = data.split(clean_df)
+    X_train, X_val, X_test, y_train, y_val, y_test = data.split(clean_df)
 
-    assert len(X_train) + len(X_test) == len(clean_df)
-    assert abs(y_train.mean() - y_test.mean()) < 0.02
+    assert len(X_train) + len(X_val) + len(X_test) == len(clean_df)
+    assert len(X_val) == pytest.approx(0.2 * len(clean_df), abs=1)
+    assert len(X_test) == pytest.approx(0.2 * len(clean_df), abs=1)
+    base_rate = clean_df[config.TARGET].mean()
+    for y in (y_train, y_val, y_test):
+        assert abs(y.mean() - base_rate) < 0.01
 
     # The target and the ID must never reach the model.
     assert config.TARGET not in X_train.columns
     assert config.ID_COLUMN not in X_train.columns
+
+
+def test_splits_are_disjoint(clean_df):
+    X_train, X_val, X_test, *_ = data.split(clean_df)
+    idx = [set(X.index) for X in (X_train, X_val, X_test)]
+    assert not (idx[0] & idx[1]) and not (idx[0] & idx[2]) and not (idx[1] & idx[2])
