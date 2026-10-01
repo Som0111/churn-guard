@@ -19,9 +19,12 @@ from datetime import datetime, timezone
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.base import clone
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.inspection import permutation_importance
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import brier_score_loss
 from sklearn.model_selection import StratifiedKFold, cross_validate
 from sklearn.pipeline import Pipeline
 
@@ -114,6 +117,74 @@ def compare_models(X_train: pd.DataFrame, y_train: pd.Series) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("cv_roc_auc", ascending=False)
 
 
+def calibration_variants(best_name: str) -> dict[str, object]:
+    """Four ways to get probabilities, ordered simplest first (ties go earlier).
+
+    Calibrated variants wrap the whole pipeline in CV on the training split, so
+    the calibrator never sees validation or test labels.
+    """
+    base = candidate_models()[best_name]
+    cv = StratifiedKFold(
+        n_splits=config.CV_FOLDS, shuffle=True, random_state=config.RANDOM_STATE
+    )
+    return {
+        "balanced_weights": build_pipeline(clone(base)),
+        "no_class_weight": build_pipeline(clone(base).set_params(class_weight=None)),
+        "balanced_sigmoid": CalibratedClassifierCV(
+            build_pipeline(clone(base)), method="sigmoid", cv=cv
+        ),
+        "balanced_isotonic": CalibratedClassifierCV(
+            build_pipeline(clone(base)), method="isotonic", cv=cv
+        ),
+    }
+
+
+def compare_calibration(best_name, X_train, y_train, X_val, y_val):
+    """Fit every variant on train, score calibration on validation, pick one.
+
+    Returns (winner name, fitted winner, {name: validation probabilities}, report).
+    """
+    y = y_val.to_numpy()
+    fitted, val_proba, rows = {}, {}, []
+    for name, model in calibration_variants(best_name).items():
+        model.fit(X_train, y_train)
+        p = model.predict_proba(X_val)[:, 1]
+        fitted[name], val_proba[name] = model, p
+        brier = float(brier_score_loss(y, p))
+        ece = evaluate.expected_calibration_error(y, p)
+        rows.append(
+            {
+                "variant": name,
+                "brier": round(brier, 4),
+                "ece": round(ece, 4),
+                "brier_plus_ece": brier + ece,
+                "mean_predicted": round(float(p.mean()), 4),
+                "observed_rate": round(float(y.mean()), 4),
+                "reliability_table": evaluate.reliability_table(y, p),
+            }
+        )
+
+    best_score = min(r["brier_plus_ece"] for r in rows)
+    winner = next(
+        r["variant"]
+        for r in rows
+        if r["brier_plus_ece"] <= best_score + config.CALIBRATION_TIE
+    )
+    base_rate = float(y.mean())
+    report = {
+        "scored_on": "validation",
+        "selection_rule": (
+            "lowest Brier + ECE; a variant within "
+            f"{config.CALIBRATION_TIE} of the best loses to a simpler one"
+        ),
+        "estimator": best_name,
+        "constant_base_rate_brier": round(base_rate * (1 - base_rate), 4),
+        "winner": winner,
+        "variants": [{**r, "brier_plus_ece": round(r["brier_plus_ece"], 4)} for r in rows],
+    }
+    return winner, fitted[winner], val_proba, report
+
+
 def top_drivers(
     pipeline: Pipeline, X_test: pd.DataFrame, y_test: pd.Series, top_n: int = 12
 ) -> list[dict]:
@@ -189,11 +260,16 @@ def main(skip_figures: bool = False) -> dict:
     best_name = str(leaderboard.iloc[0]["model"])
     logger.info("Winner: %s", best_name)
 
-    pipeline = build_pipeline(candidate_models()[best_name])
-    pipeline.fit(X_train, y_train)
+    calibration, pipeline, val_variants, calibration_report = compare_calibration(
+        best_name, X_train, y_train, X_val, y_val
+    )
+    logger.info("Calibration winner: %s", calibration)
+    config.CALIBRATION_PATH.write_text(
+        json.dumps(calibration_report, indent=2), encoding="utf-8"
+    )
 
     # Threshold is tuned on validation only; test labels never enter the search.
-    proba_val = pipeline.predict_proba(X_val)[:, 1]
+    proba_val = val_variants[calibration]
     validation_impact = evaluate.optimize_threshold(y_val.to_numpy(), proba_val)
     threshold = validation_impact["optimal_threshold"]
     metrics_val = evaluate.classification_metrics(y_val.to_numpy(), proba_val, threshold)
@@ -216,11 +292,21 @@ def main(skip_figures: bool = False) -> dict:
 
     figures: list[str] = []
     if not skip_figures:
-        figures = evaluate.generate_figures(y_test.to_numpy(), proba, threshold)
+        figures = evaluate.generate_figures(
+            y_test.to_numpy(),
+            proba,
+            threshold,
+            variants={n: (y_val.to_numpy(), p) for n, p in val_variants.items()},
+        )
         figures.append(plot_importance(drivers))
 
     joblib.dump(
-        {"pipeline": pipeline, "threshold": threshold, "model_name": best_name},
+        {
+            "pipeline": pipeline,
+            "threshold": threshold,
+            "model_name": best_name,
+            "calibration": calibration,
+        },
         config.MODEL_PATH,
     )
     logger.info("Model saved to %s", config.MODEL_PATH)
@@ -229,6 +315,8 @@ def main(skip_figures: bool = False) -> dict:
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "dataset": dataset_summary,
         "selected_model": best_name,
+        "calibration_method": calibration,
+        "calibration_comparison": evaluate._repo_relative(config.CALIBRATION_PATH),
         "leaderboard": leaderboard.round(4).to_dict(orient="records"),
         "split_sizes": {
             "train": len(X_train),

@@ -107,3 +107,10 @@ def test_metrics_endpoint_exposes_the_training_report(client):
     body = client.get("/metrics").json()
     assert "business_impact" in body
     assert body["test_metrics_tuned_threshold"]["roc_auc"] > 0.75
+
+
+def test_metrics_report_stores_ece_and_calibration_choice(client):
+    body = client.get("/metrics").json()
+    assert 0 <= body["validation_metrics_tuned_threshold"]["ece"] <= 1
+    assert 0 <= body["test_metrics_tuned_threshold"]["ece"] <= 1
+    assert body["calibration_method"]

@@ -25,6 +25,7 @@ RAW_CSV = RAW_DIR / "telco_churn.csv"
 MODEL_PATH = MODEL_DIR / "churn_pipeline.joblib"
 METADATA_PATH = MODEL_DIR / "model_card.json"
 METRICS_PATH = REPORT_DIR / "metrics.json"
+CALIBRATION_PATH = REPORT_DIR / "calibration_comparison.json"
 
 DATA_URL = (
     "https://raw.githubusercontent.com/IBM/telco-customer-churn-on-icp4d/"
@@ -68,6 +69,7 @@ RANDOM_STATE = 42
 VAL_SIZE = 0.2   # threshold tuning only
 TEST_SIZE = 0.2  # final report only, scored once
 CV_FOLDS = 5
+CALIBRATION_TIE = 0.001  # Brier+ECE gap below which the simpler variant wins
 
 
 # --------------------------------------------------------------------------- #

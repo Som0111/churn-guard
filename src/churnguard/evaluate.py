@@ -37,6 +37,44 @@ def _repo_relative(path) -> str:
     return Path(path).resolve().relative_to(config.ROOT).as_posix()
 
 
+def _calibration_bins(
+    y_true: np.ndarray, proba: np.ndarray, n_bins: int
+) -> list[tuple[int, float, float]]:
+    """Equal-count bins of (size, mean predicted, observed rate)."""
+    y_true = np.asarray(y_true)
+    proba = np.asarray(proba)
+    order = np.argsort(proba, kind="stable")
+    return [
+        (len(idx), float(proba[idx].mean()), float(y_true[idx].mean()))
+        for idx in np.array_split(order, n_bins)
+        if len(idx)
+    ]
+
+
+def expected_calibration_error(
+    y_true: np.ndarray, proba: np.ndarray, n_bins: int = 10
+) -> float:
+    """Size-weighted mean |predicted - observed| over equal-count bins."""
+    bins = _calibration_bins(y_true, proba, n_bins)
+    total = sum(n for n, _, _ in bins)
+    return sum(n * abs(pred - obs) for n, pred, obs in bins) / total
+
+
+def reliability_table(
+    y_true: np.ndarray, proba: np.ndarray, n_bins: int = 10
+) -> list[dict]:
+    """Mean predicted vs observed churn rate per bin, lowest scores first."""
+    return [
+        {
+            "bin": i + 1,
+            "n": n,
+            "mean_predicted": round(pred, 4),
+            "observed_rate": round(obs, 4),
+        }
+        for i, (n, pred, obs) in enumerate(_calibration_bins(y_true, proba, n_bins))
+    ]
+
+
 def classification_metrics(
     y_true: np.ndarray, proba: np.ndarray, threshold: float = 0.5
 ) -> dict:
@@ -47,6 +85,7 @@ def classification_metrics(
         "roc_auc": round(float(roc_auc_score(y_true, proba)), 4),
         "pr_auc": round(float(average_precision_score(y_true, proba)), 4),
         "brier_score": round(float(brier_score_loss(y_true, proba)), 4),
+        "ece": round(expected_calibration_error(y_true, proba), 4),
         "accuracy": round(float(accuracy_score(y_true, y_pred)), 4),
         "precision": round(float(precision_score(y_true, y_pred, zero_division=0)), 4),
         "recall": round(float(recall_score(y_true, y_pred, zero_division=0)), 4),
@@ -156,8 +195,12 @@ def generate_figures(
     proba: np.ndarray,
     threshold: float,
     cost_model: CostModel = DEFAULT_COST_MODEL,
+    variants: dict[str, tuple[np.ndarray, np.ndarray]] | None = None,
 ) -> list[str]:
-    """Write the four report figures and return their paths."""
+    """Write the four report figures and return their paths.
+
+    ``variants`` maps a calibration variant name to its (y, proba) on validation.
+    """
     import matplotlib
 
     matplotlib.use("Agg")
@@ -266,14 +309,31 @@ def generate_figures(
     written.append(_repo_relative(path))
 
     # 4. Calibration - are the probabilities trustworthy enough to price?
+    # Left: the four variants compared on validation. Right: the chosen model on test.
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.5))
+    for ax in axes:
+        ax.plot([0, 1], [0, 1], "--", color=muted, label="perfect calibration")
+        ax.set_xlabel("Predicted churn probability")
+        ax.set_ylabel("Observed churn rate")
+
+    for name, (y_v, p_v) in (variants or {}).items():
+        v_true, v_pred = calibration_curve(y_v, p_v, n_bins=10, strategy="quantile")
+        axes[0].plot(
+            v_pred, v_true, "o-", label=f"{name} (ECE {expected_calibration_error(y_v, p_v):.3f})"
+        )
+    axes[0].set_title("Calibration variants (validation)")
+    axes[0].legend(fontsize=8)
+
     prob_true, prob_pred = calibration_curve(y_true, proba, n_bins=10, strategy="quantile")
-    fig, ax = plt.subplots(figsize=(5.5, 4.5))
-    ax.plot([0, 1], [0, 1], "--", color=muted, label="perfect calibration")
-    ax.plot(prob_pred, prob_true, "o-", color=accent, label="ChurnGuard")
-    ax.set_xlabel("Predicted churn probability")
-    ax.set_ylabel("Observed churn rate")
-    ax.set_title("Calibration")
-    ax.legend()
+    axes[1].plot(
+        prob_pred,
+        prob_true,
+        "o-",
+        color=accent,
+        label=f"ChurnGuard (ECE {expected_calibration_error(y_true, proba):.3f})",
+    )
+    axes[1].set_title("Chosen model (test)")
+    axes[1].legend()
     fig.tight_layout()
     path = config.FIGURE_DIR / "calibration.png"
     fig.savefig(path, dpi=140)

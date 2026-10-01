@@ -31,10 +31,11 @@ choosing the decision threshold, and **test** is scored once with that threshold
 |---|---|---|
 | **ROC-AUC** | **0.846** | Ranking quality — the part the model controls |
 | **PR-AUC** | **0.654** | Honest view under a 26.5% base rate |
-| Brier score | 0.165 | Probabilities are calibrated enough to price decisions on |
-| Recall @ tuned threshold | **66.6%** | 249 of 374 real churners caught |
-| Precision @ tuned threshold | 58.0% | Above the 33% break-even precision the cost model demands |
-| Accuracy | 78.4% | Reported last, on purpose — see below |
+| Brier score | 0.136 | Constant base-rate predictor scores 0.195 (lower is better) |
+| Expected calibration error (ECE) | 0.020 | Mean gap between predicted and observed churn rate — see [Calibration](#calibration) |
+| Recall @ tuned threshold | **67.7%** | 253 of 374 real churners caught |
+| Precision @ tuned threshold | 57.4% | Above the 33% break-even precision the cost model demands |
+| Accuracy | 78.1% | Reported last, on purpose — see below |
 
 ### Model selection
 
@@ -59,10 +60,10 @@ the finding, not a disappointment.
 |---|---|---|
 | Do nothing | $0 | 0 |
 | Blanket campaign (offer to everyone) | **−$14,350** | 1,409 |
-| Model @ default 0.50 threshold | +$15,400 | — |
-| **Model @ 0.64 threshold (tuned on validation)** | **+$15,900** | 429 |
+| Model @ default 0.50 threshold | +$15,050 | — |
+| **Model @ 0.38 threshold (tuned on validation)** | **+$15,900** | 441 |
 
-On the validation split the same threshold earns $17,150, so the gap to the test figure is the
+On the validation split the same threshold earns $16,950, so the gap to the test figure is the
 honest cost of tuning on one sample and scoring on another. All rows above are test-set numbers.
 
 Cost assumptions, all declared in [`config.py`](src/churnguard/config.py) and easy to change:
@@ -80,11 +81,11 @@ is an output of the business model, not a hardcoded 0.5.
 
 Permutation importance on held-out data (drop in test ROC-AUC when a feature is shuffled):
 
-1. **`tenure`** (−0.372) — by a wide margin. Churn is overwhelmingly an early-life problem.
+1. **`tenure`** (−0.375) — by a wide margin. Churn is overwhelmingly an early-life problem.
 2. **`TotalCharges`** (−0.096) — proxy for accumulated relationship value.
-3. **`Contract`** (−0.050) — month-to-month customers have no exit friction.
-4. **`MonthlyCharges`** (−0.037) — price sensitivity.
-5. **`InternetService`** (−0.026) — fiber customers churn hardest, the classic signal in this dataset.
+3. **`Contract`** (−0.046) — month-to-month customers have no exit friction.
+4. **`MonthlyCharges`** (−0.032) — price sensitivity.
+5. **`InternetService`** (−0.024) — fiber customers churn hardest, the classic signal in this dataset.
 
 **Actionable read:** the highest-leverage intervention is moving new fiber customers onto an annual
 contract inside their first six months, not discounting the back book.
@@ -94,8 +95,28 @@ contract inside their first six months, not discounting the back book.
 ![ROC and precision-recall curves](reports/figures/roc_pr_curves.png)
 ![Calibration](reports/figures/calibration.png)
 
-Calibration matters more than it looks: the cost model multiplies predicted probabilities by dollar
-values, so systematically overconfident probabilities would silently mis-price the whole campaign.
+### Calibration
+
+The cost model multiplies predicted probabilities by dollar values, so miscalibrated probabilities
+would silently mis-price the campaign. This was audited on the validation split
+([`reports/calibration_comparison.json`](reports/calibration_comparison.json)), comparing four ways of
+producing probabilities from the selected logistic regression. Calibrators are fit by 5-fold CV on the
+training split only.
+
+| Variant | Brier | ECE | Mean predicted (observed 0.265) |
+|---|---|---|---|
+| `class_weight="balanced"` (the original) | 0.1655 | **0.142** | 0.407 |
+| **No class weights** ✅ | **0.1369** | **0.019** | 0.260 |
+| Balanced + sigmoid | 0.1368 | 0.022 | 0.261 |
+| Balanced + isotonic | 0.1372 | 0.032 | 0.259 |
+
+**The original `balanced` model was not calibrated:** it predicted a 40.7% average churn rate for a
+population that churns at 26.5%, and its Brier score (0.1655) was only modestly better than the 0.195
+a constant base-rate predictor gets. Winner: **no class weights** — lowest Brier + ECE (sigmoid ties on Brier,
+0.1368 vs 0.1369, but has higher ECE and adds a calibrator for no gain). On the test
+split the winner scores Brier 0.136 and ECE 0.020. Ranking quality is essentially unchanged (test ROC-AUC 0.8464 → 0.8463, PR-AUC 0.6563 → 0.6548); what moved is the probability scale, so the profit-tuned threshold fell from 0.64 to
+0.38. ECE here uses 10 equal-count bins, and the validation split was used both to pick the variant and
+to tune the threshold, so the figures carry a small selection effect.
 
 ---
 
@@ -107,7 +128,7 @@ cd churn-guard
 
 pip install -e ".[dev]"     # install
 python -m churnguard.train  # download data, train, evaluate, write figures (~35s)
-pytest                      # 26 tests
+pytest                      # 29 tests
 uvicorn churnguard.api:app --reload
 ```
 
@@ -125,10 +146,10 @@ curl -X POST http://127.0.0.1:8000/predict \
 
 ```json
 {
-  "churn_probability": 0.8637,
+  "churn_probability": 0.7092,
   "will_churn": true,
   "risk_band": "high",
-  "threshold_used": 0.6429,
+  "threshold_used": 0.3837,
   "recommended_action": "Priority outreach: call within 48h and offer a contract upgrade."
 }
 ```
@@ -219,7 +240,7 @@ churn-guard/
 │   ├── train.py        model comparison, selection, model card
 │   ├── evaluate.py     metrics, threshold optimisation, figures
 │   └── api.py          FastAPI serving layer
-├── tests/              26 tests: data contracts, features, costs, API
+├── tests/              29 tests: data contracts, features, costs, API
 ├── reports/            metrics.json + generated figures
 ├── models/             fitted pipeline + model card
 ├── .github/workflows/  CI on Python 3.10 / 3.11 / 3.12
@@ -235,9 +256,11 @@ churn-guard/
 **Accuracy is reported last.** With a 73/27 split, a model that predicts "nobody churns" scores 73%
 accuracy and is worth exactly $0. ROC-AUC and PR-AUC drive selection; profit drives the threshold.
 
-**`class_weight="balanced"` instead of SMOTE.** Resampling distorts the predicted probabilities, and
-this project multiplies those probabilities by dollar values. Reweighting keeps the cost model
-honest and avoids synthesising customers who never existed.
+**No resampling and no class weights.** SMOTE distorts predicted probabilities, and this project
+multiplies those probabilities by dollar values. `class_weight="balanced"` distorts them too: it
+was the original choice, and the calibration audit showed it inflated the mean predicted churn rate
+from 26.5% to 40.7% (ECE 0.142). The final model is trained unweighted (ECE 0.019); the profit
+threshold, not the loss function, is what handles the class imbalance.
 
 **The 11 blank `TotalCharges` values are not missing data.** Every one belongs to a customer with
 `tenure == 0` — billed for the first time after the snapshot. Their true total is $0. Dropping them
@@ -262,13 +285,13 @@ stakeholder actually asks: *how much worse is this model without that column?*
 pytest -v
 ```
 
-26 tests across four areas:
+29 tests across four areas:
 
 - **Data contracts** — the target is binary, the zero-tenure fix holds, the train/validation/test
   splits are disjoint and stratified, and neither the target nor the customer ID can leak into features.
 - **Feature engineering** — zero tenure never divides by zero, add-on counting is correct.
 - **Cost model** — the confusion-matrix arithmetic, that the tuned threshold never loses to 0.5 on
-  validation, that an optimum between old grid points is found, and that test labels never enter the search.
+  validation, that an optimum between old grid points is found, and that test labels never enter the search, plus ECE and reliability-table checks.
 - **API** — schema validation rejects bad input, batch order is preserved, and a new month-to-month
   fiber customer must score higher than a two-year contract holder. That last one is a behavioural
   test: it fails if the pipeline is ever wired up backwards.

@@ -1,0 +1,289 @@
+{
+  "scored_on": "validation",
+  "selection_rule": "lowest Brier + ECE; a variant within 0.001 of the best loses to a simpler one",
+  "estimator": "logistic_regression",
+  "constant_base_rate_brier": 0.195,
+  "winner": "no_class_weight",
+  "variants": [
+    {
+      "variant": "balanced_weights",
+      "brier": 0.1655,
+      "ece": 0.1418,
+      "brier_plus_ece": 0.3073,
+      "mean_predicted": 0.4072,
+      "observed_rate": 0.2654,
+      "reliability_table": [
+        {
+          "bin": 1,
+          "n": 141,
+          "mean_predicted": 0.019,
+          "observed_rate": 0.0142
+        },
+        {
+          "bin": 2,
+          "n": 141,
+          "mean_predicted": 0.0505,
+          "observed_rate": 0.0213
+        },
+        {
+          "bin": 3,
+          "n": 141,
+          "mean_predicted": 0.1081,
+          "observed_rate": 0.0496
+        },
+        {
+          "bin": 4,
+          "n": 141,
+          "mean_predicted": 0.1989,
+          "observed_rate": 0.1418
+        },
+        {
+          "bin": 5,
+          "n": 141,
+          "mean_predicted": 0.3287,
+          "observed_rate": 0.156
+        },
+        {
+          "bin": 6,
+          "n": 141,
+          "mean_predicted": 0.4432,
+          "observed_rate": 0.2057
+        },
+        {
+          "bin": 7,
+          "n": 141,
+          "mean_predicted": 0.5697,
+          "observed_rate": 0.2624
+        },
+        {
+          "bin": 8,
+          "n": 141,
+          "mean_predicted": 0.6897,
+          "observed_rate": 0.4539
+        },
+        {
+          "bin": 9,
+          "n": 141,
+          "mean_predicted": 0.7857,
+          "observed_rate": 0.6241
+        },
+        {
+          "bin": 10,
+          "n": 140,
+          "mean_predicted": 0.8822,
+          "observed_rate": 0.7286
+        }
+      ]
+    },
+    {
+      "variant": "no_class_weight",
+      "brier": 0.1369,
+      "ece": 0.0193,
+      "brier_plus_ece": 0.1561,
+      "mean_predicted": 0.2599,
+      "observed_rate": 0.2654,
+      "reliability_table": [
+        {
+          "bin": 1,
+          "n": 141,
+          "mean_predicted": 0.007,
+          "observed_rate": 0.0142
+        },
+        {
+          "bin": 2,
+          "n": 141,
+          "mean_predicted": 0.0187,
+          "observed_rate": 0.0213
+        },
+        {
+          "bin": 3,
+          "n": 141,
+          "mean_predicted": 0.0415,
+          "observed_rate": 0.0567
+        },
+        {
+          "bin": 4,
+          "n": 141,
+          "mean_predicted": 0.0813,
+          "observed_rate": 0.1348
+        },
+        {
+          "bin": 5,
+          "n": 141,
+          "mean_predicted": 0.1489,
+          "observed_rate": 0.156
+        },
+        {
+          "bin": 6,
+          "n": 141,
+          "mean_predicted": 0.2217,
+          "observed_rate": 0.2199
+        },
+        {
+          "bin": 7,
+          "n": 141,
+          "mean_predicted": 0.3228,
+          "observed_rate": 0.2624
+        },
+        {
+          "bin": 8,
+          "n": 141,
+          "mean_predicted": 0.4461,
+          "observed_rate": 0.4397
+        },
+        {
+          "bin": 9,
+          "n": 141,
+          "mean_predicted": 0.5758,
+          "observed_rate": 0.6099
+        },
+        {
+          "bin": 10,
+          "n": 140,
+          "mean_predicted": 0.7386,
+          "observed_rate": 0.7429
+        }
+      ]
+    },
+    {
+      "variant": "balanced_sigmoid",
+      "brier": 0.1368,
+      "ece": 0.0224,
+      "brier_plus_ece": 0.1592,
+      "mean_predicted": 0.2608,
+      "observed_rate": 0.2654,
+      "reliability_table": [
+        {
+          "bin": 1,
+          "n": 141,
+          "mean_predicted": 0.0085,
+          "observed_rate": 0.0142
+        },
+        {
+          "bin": 2,
+          "n": 141,
+          "mean_predicted": 0.0218,
+          "observed_rate": 0.0213
+        },
+        {
+          "bin": 3,
+          "n": 141,
+          "mean_predicted": 0.0465,
+          "observed_rate": 0.0496
+        },
+        {
+          "bin": 4,
+          "n": 141,
+          "mean_predicted": 0.0883,
+          "observed_rate": 0.1418
+        },
+        {
+          "bin": 5,
+          "n": 141,
+          "mean_predicted": 0.1569,
+          "observed_rate": 0.156
+        },
+        {
+          "bin": 6,
+          "n": 141,
+          "mean_predicted": 0.2286,
+          "observed_rate": 0.2057
+        },
+        {
+          "bin": 7,
+          "n": 141,
+          "mean_predicted": 0.3269,
+          "observed_rate": 0.2624
+        },
+        {
+          "bin": 8,
+          "n": 141,
+          "mean_predicted": 0.4447,
+          "observed_rate": 0.4539
+        },
+        {
+          "bin": 9,
+          "n": 141,
+          "mean_predicted": 0.5654,
+          "observed_rate": 0.6241
+        },
+        {
+          "bin": 10,
+          "n": 140,
+          "mean_predicted": 0.7238,
+          "observed_rate": 0.7286
+        }
+      ]
+    },
+    {
+      "variant": "balanced_isotonic",
+      "brier": 0.1372,
+      "ece": 0.0315,
+      "brier_plus_ece": 0.1687,
+      "mean_predicted": 0.259,
+      "observed_rate": 0.2654,
+      "reliability_table": [
+        {
+          "bin": 1,
+          "n": 141,
+          "mean_predicted": 0.0026,
+          "observed_rate": 0.0142
+        },
+        {
+          "bin": 2,
+          "n": 141,
+          "mean_predicted": 0.0184,
+          "observed_rate": 0.0284
+        },
+        {
+          "bin": 3,
+          "n": 141,
+          "mean_predicted": 0.0452,
+          "observed_rate": 0.0426
+        },
+        {
+          "bin": 4,
+          "n": 141,
+          "mean_predicted": 0.0864,
+          "observed_rate": 0.1348
+        },
+        {
+          "bin": 5,
+          "n": 141,
+          "mean_predicted": 0.1319,
+          "observed_rate": 0.1631
+        },
+        {
+          "bin": 6,
+          "n": 141,
+          "mean_predicted": 0.2405,
+          "observed_rate": 0.2128
+        },
+        {
+          "bin": 7,
+          "n": 141,
+          "mean_predicted": 0.3306,
+          "observed_rate": 0.2695
+        },
+        {
+          "bin": 8,
+          "n": 141,
+          "mean_predicted": 0.4205,
+          "observed_rate": 0.4326
+        },
+        {
+          "bin": 9,
+          "n": 141,
+          "mean_predicted": 0.5552,
+          "observed_rate": 0.6312
+        },
+        {
+          "bin": 10,
+          "n": 140,
+          "mean_predicted": 0.7626,
+          "observed_rate": 0.7286
+        }
+      ]
+    }
+  ]
+}

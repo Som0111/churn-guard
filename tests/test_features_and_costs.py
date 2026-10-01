@@ -8,7 +8,14 @@ import pytest
 
 from churnguard import features
 from churnguard.config import CostModel
-from churnguard.evaluate import apply_threshold, optimize_threshold, profit_curve
+from churnguard.evaluate import (
+    apply_threshold,
+    classification_metrics,
+    expected_calibration_error,
+    optimize_threshold,
+    profit_curve,
+    reliability_table,
+)
 
 
 @pytest.fixture
@@ -104,6 +111,22 @@ def test_tuned_threshold_never_loses_to_default_on_validation():
         p = np.clip(y * 0.3 + rng.uniform(size=500) * 0.7, 0, 1)
         report = optimize_threshold(y, p)
         assert report["net_benefit_optimal"] >= report["net_benefit_at_0.5"]
+
+
+def test_ece_is_zero_for_calibrated_and_large_for_overconfident():
+    rng = np.random.default_rng(5)
+    p = rng.uniform(size=20000)
+    y = rng.binomial(1, p)
+    assert expected_calibration_error(y, p) < 0.02
+    assert expected_calibration_error(y, np.clip(p + 0.3, 0, 1)) > 0.15
+    table = reliability_table(y, p)
+    assert len(table) == 10 and sum(r["n"] for r in table) == 20000
+
+
+def test_classification_metrics_include_ece():
+    y = np.array([0, 0, 1, 1] * 10)
+    p = np.array([0.1, 0.4, 0.6, 0.9] * 10)
+    assert 0 <= classification_metrics(y, p, 0.5)["ece"] <= 1
 
 
 def test_profit_curve_is_monotone_in_targeting():
