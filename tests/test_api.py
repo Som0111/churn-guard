@@ -1,7 +1,8 @@
 """API contract tests.
 
-These run against the real fitted pipeline, so they double as an end-to-end
-check that a raw customer dict survives feature engineering and scoring.
+They run against a small deterministic fixture model (see ``conftest.py``), so
+they never depend on a trained artifact and are never skipped. A raw customer
+dict still goes through the real feature engineering and scoring path.
 """
 
 from __future__ import annotations
@@ -9,15 +10,8 @@ from __future__ import annotations
 import json
 
 import pytest
-from fastapi.testclient import TestClient
 
 from churnguard import config
-from churnguard.api import app
-
-pytestmark = pytest.mark.skipif(
-    not config.MODEL_PATH.exists(),
-    reason="model artifact missing - run `python -m churnguard.train`",
-)
 
 HIGH_RISK = {
     "tenure": 1,
@@ -40,12 +34,6 @@ LOW_RISK = {
     "MonthlyCharges": 60.0,
     "TotalCharges": 4080.0,
 }
-
-
-@pytest.fixture(scope="module")
-def client():
-    with TestClient(app) as test_client:
-        yield test_client
 
 
 def test_health_reports_a_loaded_model(client):
@@ -162,3 +150,45 @@ def test_zero_tenure_edge_cases_are_still_accepted(client):
     for total in (0.0, 30.0, 50.0):  # none, partial first bill, exactly one month
         r = client.post("/predict", json={**HIGH_RISK, "tenure": 0, "MonthlyCharges": 50.0, "TotalCharges": total})
         assert r.status_code == 200, total
+
+
+# --------------------------------------------------------------------------- #
+# Edge cases
+# --------------------------------------------------------------------------- #
+def test_empty_batch_is_rejected(client):
+    assert client.post("/predict/batch", json={"customers": []}).status_code == 422
+
+
+def test_oversized_batch_is_rejected(client):
+    too_many = {"customers": [HIGH_RISK] * 1001}
+    assert client.post("/predict/batch", json=too_many).status_code == 422
+
+
+def test_batch_at_the_limit_is_accepted(client):
+    response = client.post("/predict/batch", json={"customers": [HIGH_RISK] * 1000})
+    assert response.status_code == 200 and len(response.json()) == 1000
+
+
+def test_malformed_json_is_rejected(client):
+    response = client.post(
+        "/predict", content="{not json", headers={"content-type": "application/json"}
+    )
+    assert response.status_code == 422
+
+
+def test_missing_required_field_names_the_field(client):
+    body = {k: v for k, v in HIGH_RISK.items() if k != "MonthlyCharges"}
+    response = client.post("/predict", json=body)
+    assert response.status_code == 422
+    assert "MonthlyCharges" in str(response.json()["detail"])
+
+
+def test_wrong_type_is_rejected(client):
+    assert client.post("/predict", json={**HIGH_RISK, "tenure": "soon"}).status_code == 422
+
+
+def test_unknown_batch_member_fails_the_whole_request(client):
+    response = client.post(
+        "/predict/batch", json={"customers": [HIGH_RISK, {**LOW_RISK, "Contract": "Weekly"}]}
+    )
+    assert response.status_code == 422

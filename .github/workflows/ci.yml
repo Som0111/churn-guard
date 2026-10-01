@@ -34,7 +34,7 @@ jobs:
         run: python -m churnguard.train --skip-figures
 
       - name: Test
-        run: pytest -v
+        run: pytest -v --cov=churnguard --cov-report=term-missing --cov-fail-under=77
 
       - name: Upload model report
         if: always()

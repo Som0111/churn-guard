@@ -19,7 +19,7 @@ train:
 	python -m churnguard.train
 
 test:
-	pytest
+	pytest --cov=churnguard --cov-report=term-missing
 
 serve:
 	uvicorn churnguard.api:app --host 0.0.0.0 --port 8000 --reload

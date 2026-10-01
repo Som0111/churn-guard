@@ -34,7 +34,11 @@ def _repo_relative(path) -> str:
     """Portable path for the report, so metrics.json is not machine-specific."""
     from pathlib import Path
 
-    return Path(path).resolve().relative_to(config.ROOT).as_posix()
+    path = Path(path).resolve()
+    try:
+        return path.relative_to(config.ROOT).as_posix()
+    except ValueError:  # outside the repo (e.g. a temp dir in tests)
+        return path.as_posix()
 
 
 def _calibration_bins(
@@ -79,6 +83,11 @@ def classification_metrics(
     y_true: np.ndarray, proba: np.ndarray, threshold: float = 0.5
 ) -> dict:
     """Threshold-free ranking metrics plus metrics at a chosen threshold."""
+    if len(np.unique(y_true)) < 2:
+        raise ValueError(
+            "classification_metrics needs both classes in y_true; ROC-AUC and PR-AUC "
+            "are undefined for a single-class sample"
+        )
     y_pred = (proba >= threshold).astype(int)
     return {
         "threshold": round(float(threshold), 4),

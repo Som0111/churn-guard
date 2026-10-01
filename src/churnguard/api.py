@@ -131,9 +131,9 @@ async def lifespan(app: FastAPI):
         logger.info(
             "Loaded %s (threshold %.2f)", MODEL["model_name"], MODEL["threshold"]
         )
-    except FileNotFoundError as exc:
+    except Exception as exc:  # noqa: BLE001 - missing OR corrupt artifact must not crash startup
         # Start anyway so /health can report the problem instead of crash-looping.
-        logger.error("%s", exc)
+        logger.error("Could not load model: %s: %s", type(exc).__name__, exc)
     yield
     MODEL.clear()
 

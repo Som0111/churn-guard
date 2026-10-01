@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4", "httpx>=0.26", "ruff>=0.4"]
+dev = ["pytest>=7.4", "pytest-cov>=5.0", "httpx>=0.26", "ruff>=0.4"]
 
 [project.scripts]
 churnguard-train = "churnguard.train:main"
@@ -33,7 +33,12 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = ["integration: full training run on the real dataset (~1 min)"]
+pythonpath = ["tests"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.coverage.run]
+source = ["churnguard"]

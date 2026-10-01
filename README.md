@@ -128,7 +128,7 @@ cd churn-guard
 
 pip install -c constraints.txt -e ".[dev]"   # pinned install
 python -m churnguard.train  # download data, train, evaluate, write figures (~35s)
-pytest                      # 63 tests
+pytest                      # 83 tests
 uvicorn churnguard.api:app --reload
 ```
 
@@ -249,7 +249,7 @@ churn-guard/
 │   ├── train.py        model comparison, selection, model card
 │   ├── evaluate.py     metrics, threshold optimisation, figures
 │   └── api.py          FastAPI serving layer
-├── tests/              63 tests: data contracts, validation, integrity, provenance, features, costs, API
+├── tests/              83 tests: data, validation, provenance, features, costs, API, training
 ├── reports/            metrics.json + generated figures
 ├── models/             fitted pipeline + model card
 ├── .github/workflows/  CI on Python 3.12 (production) and 3.11 (compatibility)
@@ -292,10 +292,12 @@ stakeholder actually asks: *how much worse is this model without that column?*
 ## Testing
 
 ```bash
-pytest -v
+pytest -v                                   # everything (~1 min)
+pytest -m "not integration"                  # skip the full training run (~6s)
+pytest --cov=churnguard --cov-report=term-missing
 ```
 
-63 tests across six areas:
+83 tests across seven areas:
 
 - **Data contracts** — the target is binary, the zero-tenure fix holds, the train/validation/test
   splits are disjoint and stratified, and neither the target nor the customer ID can leak into features.
@@ -307,11 +309,20 @@ pytest -v
 - **Feature engineering** — zero tenure never divides by zero, add-on counting is correct.
 - **Cost model** — the confusion-matrix arithmetic, that the tuned threshold never loses to 0.5 on
   validation, that an optimum between old grid points is found, and that test labels never enter the search, plus ECE and reliability-table checks.
-- **API** — schema validation rejects bad input, batch order is preserved, and a new month-to-month
-  fiber customer must score higher than a two-year contract holder. That last one is a behavioural
-  test: it fails if the pipeline is ever wired up backwards.
+- **Edge cases** — single-class metrics fail loudly, all-identical predictions, threshold 0 / 1 and
+  ties, and exact hand-computed values for every engineered feature.
+- **API** — runs against a small deterministic fixture model built in `tests/conftest.py`, so it
+  **never needs a trained artifact and is never skipped**. Covers schema validation, batch order,
+  empty / oversized (1,001) / malformed requests, a behavioural check that a new month-to-month fiber
+  customer outranks a two-year contract holder, and a missing or corrupt model file (the API starts
+  degraded: `/health` says so and `/predict` returns 503).
+- **Integration** — `tests/test_integration_training.py` runs the full training twice on the real
+  dataset and asserts the same selected model, threshold and metrics both times.
 
-CI runs lint, a full training run, and the suite on three Python versions on every push.
+CI runs lint, a full training run, and the suite with coverage on Python 3.12 and 3.11 on every push.
+Coverage is 78% (measured locally, including the integration test) and CI fails below 77% — the
+floor is the current level, not a target. Most of the uncovered code is figure rendering, which the
+tests skip (`--skip-figures`).
 
 ---
 

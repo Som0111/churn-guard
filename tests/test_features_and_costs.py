@@ -138,3 +138,61 @@ def test_profit_curve_is_monotone_in_targeting():
     curve = profit_curve(y_true, proba)
     targeted = curve["customers_targeted"].to_numpy()
     assert (np.diff(targeted) <= 0).all()
+
+
+def test_engineered_features_exact_values():
+    """Hand-computed expectations for every engineered column."""
+    df = pd.DataFrame(
+        {
+            "tenure": [0, 6, 7, 24],
+            "MonthlyCharges": [70.0, 90.0, 60.0, 100.0],
+            "TotalCharges": [0.0, 300.0, 350.0, 2400.0],
+            "OnlineSecurity": ["No", "Yes", "Yes", "Yes"],
+            "OnlineBackup": ["No", "Yes", "No", "Yes"],
+            "DeviceProtection": ["No", "No", "No", "Yes"],
+            "TechSupport": ["No", "No", "Yes", "Yes"],
+            "StreamingTV": ["No", "No", "No", "Yes"],
+            "StreamingMovies": ["No", "No", "No", "Yes"],
+        }
+    )
+    out = features.add_domain_features(df)
+
+    # tenure 0 is clipped to 1 month, so its total (0) gives an average of 0
+    assert out["avg_monthly_spend"].tolist() == pytest.approx([0.0, 50.0, 50.0, 100.0])
+    # average 0 is undefined -> falls back to 1.0; otherwise monthly / average
+    assert out["spend_vs_current_ratio"].tolist() == pytest.approx([1.0, 1.8, 1.2, 1.0])
+    assert out["tenure_years"].tolist() == pytest.approx([0.0, 0.5, 7 / 12, 2.0])
+    assert out["n_addon_services"].tolist() == [0, 2, 2, 6]
+    assert out["is_new_customer"].tolist() == [1, 1, 0, 0]  # tenure <= 6 months
+
+
+def test_single_class_metrics_fail_loudly():
+    with pytest.raises(ValueError, match="both classes"):
+        classification_metrics(np.zeros(10, dtype=int), np.linspace(0.1, 0.9, 10))
+
+
+def test_single_class_profit_is_still_defined():
+    """All stayers: any campaign only wastes money, so the best move is to do nothing."""
+    y = np.zeros(50, dtype=int)
+    p = np.linspace(0.05, 0.95, 50)
+    report = optimize_threshold(y, p)
+    assert report["net_benefit_optimal"] == 0.0 and report["customers_targeted"] == 0
+
+
+def test_all_identical_predictions():
+    y = np.array([0, 1] * 20)
+    p = np.full(40, 0.3)
+    assert classification_metrics(y, p, 0.5)["roc_auc"] == pytest.approx(0.5)
+    assert expected_calibration_error(y, p) == pytest.approx(0.2)  # |0.3 - 0.5|
+    report = optimize_threshold(y, p)
+    # Constant scores can only target everyone or no one.
+    assert report["net_benefit_optimal"] == max(0.0, report["net_benefit_blanket_campaign"])
+
+
+def test_threshold_extremes_and_ties():
+    y = np.array([0, 0, 1, 1])
+    p = np.array([0.2, 0.4, 0.4, 0.9])
+    assert apply_threshold(y, p, 0.0)["customers_targeted"] == 4  # everyone
+    assert apply_threshold(y, p, 1.0)["customers_targeted"] == 0  # no one (p < 1)
+    assert apply_threshold(y, p, 0.4)["customers_targeted"] == 3  # >= includes the tie
+    assert apply_threshold(y, p, 0.4000001)["customers_targeted"] == 1
