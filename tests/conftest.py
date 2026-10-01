@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from sklearn.linear_model import LogisticRegression
 
 from churnguard import api, config, evaluate
+from churnguard.explain import make_background
 from churnguard.train import build_pipeline, build_provenance
 
 
@@ -63,6 +64,7 @@ def fixture_artifacts(tmp_path_factory):
             "threshold": threshold,
             "model_name": "logistic_regression",
             "calibration": "no_class_weight",
+            "explainer_background": make_background(model, X_tr),
         },
         artifact,
     )

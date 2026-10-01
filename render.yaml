@@ -9,7 +9,7 @@ services:
     name: churnguard-api
     runtime: python
     plan: free
-    buildCommand: pip install -c constraints.txt -e . && python -m churnguard.train --skip-figures
+    buildCommand: pip install -c constraints.txt -e ".[explain]" && python -m churnguard.train --skip-figures
     startCommand: uvicorn churnguard.api:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:

@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import json
 
+import joblib
+import pandas as pd
 import pytest
+from test_api import HIGH_RISK
 
-from churnguard import config, train
+from churnguard import config, explain, train
+from churnguard.api import Customer
 
 pytestmark = pytest.mark.integration
 
@@ -38,3 +42,14 @@ def test_training_runs_and_is_reproducible(tmp_path, monkeypatch):
     ):
         assert first[key] == second[key], key
     assert first["test_metrics_tuned_threshold"]["roc_auc"] > 0.80
+
+
+def test_trained_model_explains_a_high_risk_customer(tmp_path, monkeypatch):
+    _, out = _train_into(tmp_path, monkeypatch, "c")
+    artifact = joblib.load(out / "model.joblib")
+    explainer = explain.build_explainer(artifact["pipeline"], artifact["explainer_background"])
+
+    frame = pd.DataFrame([Customer(**HIGH_RISK).model_dump()])
+    drivers = explainer.drivers(frame)[0]
+    assert len(drivers) == 3
+    assert {d["feature"] for d in drivers} & {"tenure", "Contract"}

@@ -35,6 +35,17 @@ ADDON_SERVICES = [
 ]
 
 
+# Raw customer fields each engineered feature is computed from (used to fold SHAP
+# contributions back onto original fields - see explain.py).
+DERIVED_SOURCES = {
+    "avg_monthly_spend": ["TotalCharges", "tenure"],
+    "spend_vs_current_ratio": ["MonthlyCharges", "TotalCharges", "tenure"],
+    "tenure_years": ["tenure"],
+    "n_addon_services": ADDON_SERVICES,
+    "is_new_customer": ["tenure"],
+}
+
+
 def add_domain_features(df: pd.DataFrame) -> pd.DataFrame:
     """Add features a churn analyst would actually ask for.
 

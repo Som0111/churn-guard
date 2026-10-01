@@ -14,7 +14,10 @@ ENV GIT_SHA=$GIT_SHA
 COPY pyproject.toml constraints.txt ./
 COPY src/ ./src/
 COPY README.md ./
-RUN pip install -c constraints.txt .
+# EXTRAS=explain adds SHAP drivers to /predict (~150 MB of numba/llvmlite).
+# Build with --build-arg EXTRAS= for a slim image that scores without drivers.
+ARG EXTRAS=explain
+RUN pip install -c constraints.txt ".${EXTRAS:+[$EXTRAS]}"
 
 # Bake the trained model into the image so the container starts ready to serve.
 RUN python -m churnguard.train --skip-figures

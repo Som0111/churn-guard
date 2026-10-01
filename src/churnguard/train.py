@@ -31,7 +31,7 @@ from sklearn.metrics import brier_score_loss
 from sklearn.model_selection import StratifiedKFold, cross_validate
 from sklearn.pipeline import Pipeline
 
-from churnguard import config, data, evaluate, features
+from churnguard import config, data, evaluate, explain, features
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)-7s | %(message)s"
@@ -257,9 +257,7 @@ def _git(*args: str) -> str | None:
 
 def _final_estimator(model):
     """The bare estimator inside a (possibly calibrated) fitted pipeline."""
-    if hasattr(model, "calibrated_classifiers_"):
-        model = model.calibrated_classifiers_[0].estimator
-    return model.named_steps["model"]
+    return explain.base_pipeline(model).named_steps["model"]
 
 
 def build_provenance(
@@ -383,6 +381,7 @@ def main(skip_figures: bool = False) -> dict:
             "threshold": threshold,
             "model_name": best_name,
             "calibration": calibration,
+            "explainer_background": explain.make_background(pipeline, X_train),
         },
         config.MODEL_PATH,
     )

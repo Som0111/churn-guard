@@ -159,9 +159,9 @@ to tune the threshold, so the figures carry a small selection effect.
 git clone https://github.com/som0111/churn-guard.git
 cd churn-guard
 
-pip install -c constraints.txt -e ".[dev]"   # pinned install
+pip install -c constraints.txt -e ".[dev,explain]"   # pinned install (+SHAP drivers)
 python -m churnguard.train  # download data, train, evaluate, write figures (~35s)
-pytest                      # 87 tests
+pytest                      # 102 tests
 uvicorn churnguard.api:app --reload
 ```
 
@@ -169,7 +169,7 @@ uvicorn churnguard.api:app --reload
 as a compatibility check. `pyproject.toml` is the single source of truth for dependencies;
 [`constraints.txt`](constraints.txt) pins every resolved version, so a fresh clone installs exactly
 what the reported metrics were produced with. To regenerate the pins after changing dependencies:
-resolve `pip install ".[dev]"` for Python 3.12 and write the result back to `constraints.txt`
+resolve `pip install ".[dev,explain]"` for Python 3.12 and write the result back to `constraints.txt`
 (NumPy is held below 2.5 and SciPy below 1.18 so the same pins also install on 3.11).
 
 Interactive API docs: <http://127.0.0.1:8000/docs>
@@ -190,12 +190,41 @@ curl -X POST http://127.0.0.1:8000/predict \
   "will_churn": true,
   "risk_band": "high",
   "threshold_used": 0.3837,
-  "recommended_action": "Priority outreach: call within 48h and offer a contract upgrade."
+  "recommended_action": "Priority outreach: call within 48h and offer a contract upgrade.",
+  "top_drivers": [
+    {"feature": "tenure",          "direction": "raises", "magnitude": 1.7518},
+    {"feature": "Contract",        "direction": "raises", "magnitude": 0.6835},
+    {"feature": "InternetService", "direction": "raises", "magnitude": 0.6016}
+  ]
 }
 ```
 
-The API returns an **action**, not just a number. A retention analyst can act on the response
-without knowing what a probability is.
+The API returns an **action and the reasons**, not just a number. A retention analyst can act on the
+response without knowing what a probability is.
+
+### Why this score? (SHAP drivers)
+
+`top_drivers` lists the three customer fields moving this score most, from per-customer
+[SHAP](https://github.com/shap/shap) values (`LinearExplainer` for logistic regression,
+`TreeExplainer` for random forests). `direction` says whether the field raises or lowers the churn
+risk relative to an average training customer; `magnitude` is the absolute contribution in log-odds.
+
+**Grouping.** SHAP runs on the model's transformed inputs, so contributions are folded back onto the
+original customer fields before ranking, so that drivers read as fields the analyst recognises:
+
+- one-hot columns go to their field (`Contract_Two year` → `Contract`);
+- engineered features go to the field they came from (`tenure_years` and `is_new_customer` → `tenure`);
+- a feature built from several fields is split equally between them (`avg_monthly_spend` →
+  half `TotalCharges`, half `tenure`; `spend_vs_current_ratio` → thirds across `MonthlyCharges`,
+  `TotalCharges`, `tenure`; `n_addon_services` → sixths across the six add-on services).
+
+Grouping only re-labels: the grouped values still sum to the model's total contribution (tested).
+The equal split is a convention, not a measurement of which source "really" mattered. These are
+associations in the model, not causes: a driver that "raises" risk is not shown to be something that,
+if changed, would change the customer's behaviour. `shap` is an optional extra (`.[explain]`,
+about +150 MB of numba/llvmlite); without it the API still scores and `top_drivers` is `null`.
+Measured on one Windows machine (in-process, 300 requests): `/predict` p50 latency 19.7 ms without
+drivers, 35.0 ms with.
 
 | Endpoint | Purpose |
 |---|---|
@@ -212,7 +241,8 @@ docker build -t churnguard .
 docker run -p 8000:8000 churnguard
 ```
 
-The image is based on `python:3.12.7-slim-bookworm`, installs with the pinned `constraints.txt`, and
+The image is based on `python:3.12.7-slim-bookworm`, installs with the pinned `constraints.txt` (including
+the `explain` extra; build with `--build-arg EXTRAS=` for a slim image without SHAP drivers), and
 trains the model at build time, so the container starts ready to serve. Pass
 `--build-arg GIT_SHA=$(git rev-parse --short HEAD)` to record the commit in the model report.
 
@@ -221,7 +251,7 @@ trains the model at build time, so the container starts ready to serve. Pass
 The live instance runs on Render's free tier, configured by [`render.yaml`](render.yaml):
 
 ```yaml
-buildCommand: pip install -c constraints.txt -e . && python -m churnguard.train --skip-figures
+buildCommand: pip install -c constraints.txt -e ".[explain]" && python -m churnguard.train --skip-figures
 startCommand: uvicorn churnguard.api:app --host 0.0.0.0 --port $PORT
 ```
 
@@ -281,8 +311,9 @@ churn-guard/
 │   ├── features.py     domain features + preprocessing pipeline
 │   ├── train.py        model comparison, selection, model card
 │   ├── evaluate.py     metrics, threshold optimisation, figures
+│   ├── explain.py      SHAP drivers grouped to original fields
 │   └── api.py          FastAPI serving layer
-├── tests/              87 tests: data, validation, provenance, features, costs, API, training
+├── tests/              102 tests: data, validation, provenance, features, costs, API, training
 ├── reports/            metrics.json + generated figures
 ├── models/             fitted pipeline + model card
 ├── .github/workflows/  CI on Python 3.12 (production) and 3.11 (compatibility)
@@ -330,7 +361,7 @@ pytest -m "not integration"                  # skip the full training run (~6s)
 pytest --cov=churnguard --cov-report=term-missing
 ```
 
-87 tests across eight areas:
+102 tests across nine areas:
 
 - **Data contracts** — the target is binary, the zero-tenure fix holds, the train/validation/test
   splits are disjoint and stratified, and neither the target nor the customer ID can leak into features.
@@ -344,6 +375,9 @@ pytest --cov=churnguard --cov-report=term-missing
   validation, that an optimum between old grid points is found, and that test labels never enter the search, plus ECE and reliability-table checks.
 - **Uncertainty** — the bootstrap is seeded and reproducible, its interval contains the point
   estimate, and the sensitivity grid's $50 / 30% cell equals the headline profit.
+- **Explanations** — SHAP drivers map to original fields, grouped values are additive, a new
+  month-to-month fiber customer is explained by `tenure` or `Contract`, and scoring survives a missing
+  or failing explainer.
 - **Edge cases** — single-class metrics fail loudly, all-identical predictions, threshold 0 / 1 and
   ties, and exact hand-computed values for every engineered feature.
 - **API** — runs against a small deterministic fixture model built in `tests/conftest.py`, so it
@@ -376,7 +410,7 @@ tests skip (`--skip-figures`).
 
 - [ ] Uplift modelling — target *persuadable* customers, not merely likely churners
 - [ ] Survival analysis for time-to-churn
-- [ ] SHAP values for per-customer explanations in the API response
+- [x] SHAP values for per-customer explanations in the API response
 - [ ] Drift monitoring + scheduled retraining
 
 ---

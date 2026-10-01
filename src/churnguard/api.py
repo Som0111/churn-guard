@@ -22,7 +22,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, model_validator
 
-from churnguard import __version__, config
+from churnguard import __version__, config, explain
 
 logger = logging.getLogger(__name__)
 
@@ -103,12 +103,23 @@ class Customer(BaseModel):
     }
 
 
+class Driver(BaseModel):
+    """One reason behind a score, in terms of an original customer field."""
+
+    feature: str
+    direction: Literal["raises", "lowers"]
+    magnitude: float = Field(..., description="Absolute SHAP contribution, log-odds of churn")
+
+
 class Prediction(BaseModel):
     churn_probability: float
     will_churn: bool
     risk_band: Literal["low", "medium", "high"]
     threshold_used: float
     recommended_action: str
+    top_drivers: list[Driver] | None = Field(
+        None, description="Top 3 fields moving this score; null if SHAP is unavailable"
+    )
 
 
 class BatchRequest(BaseModel):
@@ -128,6 +139,7 @@ def load_model() -> dict:
 async def lifespan(app: FastAPI):
     try:
         MODEL.update(load_model())
+        MODEL["explainer"] = _build_explainer(MODEL)
         logger.info(
             "Loaded %s (threshold %.2f)", MODEL["model_name"], MODEL["threshold"]
         )
@@ -162,6 +174,25 @@ async def validation_error(_request: Request, exc: RequestValidationError) -> JS
     return JSONResponse(status_code=422, content={"detail": detail})
 
 
+def _build_explainer(artifact: dict):
+    try:
+        return explain.build_explainer(artifact["pipeline"], artifact.get("explainer_background"))
+    except Exception as exc:  # noqa: BLE001 - explanations are optional; scoring must still start
+        logger.error("Could not build explainer: %s: %s", type(exc).__name__, exc)
+        return None
+
+
+def _drivers(frame: pd.DataFrame) -> list[list[dict] | None]:
+    explainer = MODEL.get("explainer")
+    if explainer is None:
+        return [None] * len(frame)
+    try:
+        return explainer.drivers(frame)
+    except Exception as exc:  # noqa: BLE001 - a failed explanation must not fail the score
+        logger.error("Explanation failed: %s: %s", type(exc).__name__, exc)
+        return [None] * len(frame)
+
+
 def _risk_band(probability: float, threshold: float) -> str:
     if probability >= min(0.75, threshold + 0.25):
         return "high"
@@ -188,8 +219,9 @@ def _score(frame: pd.DataFrame) -> list[Prediction]:
     probabilities = MODEL["pipeline"].predict_proba(frame)[:, 1]
     threshold = float(MODEL["threshold"])
 
+    drivers = _drivers(frame)
     results = []
-    for probability in probabilities:
+    for probability, reasons in zip(probabilities, drivers, strict=True):
         band = _risk_band(float(probability), threshold)
         results.append(
             Prediction(
@@ -198,6 +230,7 @@ def _score(frame: pd.DataFrame) -> list[Prediction]:
                 risk_band=band,
                 threshold_used=round(threshold, 4),
                 recommended_action=_action(band),
+                top_drivers=reasons,
             )
         )
     return results
