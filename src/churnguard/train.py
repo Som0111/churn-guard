@@ -31,7 +31,7 @@ from sklearn.metrics import brier_score_loss
 from sklearn.model_selection import StratifiedKFold, cross_validate
 from sklearn.pipeline import Pipeline
 
-from churnguard import config, data, evaluate, explain, features
+from churnguard import config, data, drift, evaluate, explain, features
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)-7s | %(message)s"
@@ -382,6 +382,12 @@ def main(skip_figures: bool = False) -> dict:
             "model_name": best_name,
             "calibration": calibration,
             "explainer_background": explain.make_background(pipeline, X_train),
+            "drift_reference": drift.build_reference(
+                pipeline,
+                X_val.sample(
+                    min(config.DRIFT_REFERENCE_ROWS, len(X_val)), random_state=config.RANDOM_STATE
+                ),
+            ),
         },
         config.MODEL_PATH,
     )

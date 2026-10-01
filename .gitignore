@@ -25,3 +25,6 @@ models/*.joblib
 # OS
 .DS_Store
 Thumbs.db
+
+# Large generated Evidently report; rebuild with `python -m churnguard.drift --demo`
+reports/drift_report.html

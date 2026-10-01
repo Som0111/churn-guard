@@ -10,7 +10,7 @@ help:
 	@echo "all      - install, train, test"
 
 install:
-	pip install -c constraints.txt -e ".[dev,explain]"
+	pip install -c constraints.txt -e ".[dev,explain,monitor,analysis]"
 
 data:
 	python -c "from churnguard import data; data.download()"

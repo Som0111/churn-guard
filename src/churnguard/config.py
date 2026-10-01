@@ -110,6 +110,16 @@ CALIBRATION_TIE = 0.001  # Brier+ECE gap below which the simpler variant wins
 BOOTSTRAP_RESAMPLES = 1000
 BOOTSTRAP_LEVEL = 0.90   # central interval: 5th to 95th percentile
 
+# Drift monitoring: a feature "drifted" when its two-sample test p-value is below
+# DRIFT_P_VALUE; the batch status follows the share of drifted features.
+DRIFT_P_VALUE = 0.01
+DRIFT_WARNING_SHARE = 0.10
+DRIFT_ALERT_SHARE = 0.30
+DRIFT_MIN_ROWS = 50           # below this a drift test says nothing useful
+DRIFT_REFERENCE_ROWS = 1000   # validation rows kept as the reference sample
+DRIFT_REPORT_PATH = REPORT_DIR / "drift_report.html"
+DRIFT_DEMO_PATH = REPORT_DIR / "drift_demo.json"
+
 
 # --------------------------------------------------------------------------- #
 # Business cost model

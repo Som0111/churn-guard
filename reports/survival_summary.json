@@ -1,0 +1,197 @@
+{
+  "n_customers": 7032,
+  "n_dropped_zero_tenure": 11,
+  "kaplan_meier": [
+    {
+      "column": "Contract",
+      "groups": {
+        "Month-to-month": {
+          "n": 3875,
+          "churned": 1655,
+          "survival_at_months": {
+            "12": 0.7031,
+            "24": 0.5859,
+            "36": 0.4911,
+            "60": 0.2972
+          },
+          "median_months": 35.0
+        },
+        "One year": {
+          "n": 1472,
+          "churned": 166,
+          "survival_at_months": {
+            "12": 0.9908,
+            "24": 0.9783,
+            "36": 0.9593,
+            "60": 0.8318
+          },
+          "median_months": null
+        },
+        "Two year": {
+          "n": 1685,
+          "churned": 48,
+          "survival_at_months": {
+            "12": 1.0,
+            "24": 1.0,
+            "36": 0.9987,
+            "60": 0.9862
+          },
+          "median_months": null
+        }
+      },
+      "logrank_p_value": 0.0
+    },
+    {
+      "column": "InternetService",
+      "groups": {
+        "DSL": {
+          "n": 2416,
+          "churned": 459,
+          "survival_at_months": {
+            "12": 0.8681,
+            "24": 0.8311,
+            "36": 0.8147,
+            "60": 0.7614
+          },
+          "median_months": null
+        },
+        "Fiber optic": {
+          "n": 3096,
+          "churned": 1297,
+          "survival_at_months": {
+            "12": 0.7842,
+            "24": 0.7017,
+            "36": 0.6363,
+            "60": 0.5182
+          },
+          "median_months": 65.0
+        },
+        "No": {
+          "n": 1520,
+          "churned": 113,
+          "survival_at_months": {
+            "12": 0.9352,
+            "24": 0.9263,
+            "36": 0.9198,
+            "60": 0.9048
+          },
+          "median_months": null
+        }
+      },
+      "logrank_p_value": 1.140893144871635e-113
+    }
+  ],
+  "cox": {
+    "n_train": 4218,
+    "n_validation": 1408,
+    "penalizer": 0.01,
+    "concordance_train": 0.8612,
+    "concordance_validation": 0.8545,
+    "hazard_ratios": {
+      "MonthlyCharges_per_10usd": {
+        "hazard_ratio": 0.9819,
+        "ci_low": 0.9232,
+        "ci_high": 1.0444,
+        "p_value": 0.5623886306439578
+      },
+      "SeniorCitizen": {
+        "hazard_ratio": 0.9453,
+        "ci_low": 0.8221,
+        "ci_high": 1.0869,
+        "p_value": 0.4293846570134626
+      },
+      "n_addon_services": {
+        "hazard_ratio": 0.7368,
+        "ci_low": 0.6928,
+        "ci_high": 0.7835,
+        "p_value": 2.0426831569364406e-22
+      },
+      "Contract_One year": {
+        "hazard_ratio": 0.2198,
+        "ci_low": 0.1784,
+        "ci_high": 0.2707,
+        "p_value": 5.010606540068948e-46
+      },
+      "Contract_Two year": {
+        "hazard_ratio": 0.0708,
+        "ci_low": 0.0523,
+        "ci_high": 0.0959,
+        "p_value": 1.3939596717075152e-65
+      },
+      "InternetService_Fiber optic": {
+        "hazard_ratio": 1.5832,
+        "ci_low": 1.2299,
+        "ci_high": 2.0381,
+        "p_value": 0.0003629782937689741
+      },
+      "InternetService_No": {
+        "hazard_ratio": 0.3952,
+        "ci_low": 0.2976,
+        "ci_high": 0.5247,
+        "p_value": 1.3821634144289743e-10
+      },
+      "PaymentMethod_Credit card (automatic)": {
+        "hazard_ratio": 0.9082,
+        "ci_low": 0.7335,
+        "ci_high": 1.1246,
+        "p_value": 0.377256831373584
+      },
+      "PaymentMethod_Electronic check": {
+        "hazard_ratio": 1.9388,
+        "ci_low": 1.6428,
+        "ci_high": 2.2881,
+        "p_value": 4.767963778563434e-15
+      },
+      "PaymentMethod_Mailed check": {
+        "hazard_ratio": 1.8981,
+        "ci_low": 1.542,
+        "ci_high": 2.3363,
+        "p_value": 1.4833656465686744e-09
+      },
+      "PaperlessBilling_Yes": {
+        "hazard_ratio": 1.2986,
+        "ci_low": 1.1291,
+        "ci_high": 1.4936,
+        "p_value": 0.0002510487974703314
+      },
+      "Partner_Yes": {
+        "hazard_ratio": 0.5998,
+        "ci_low": 0.5241,
+        "ci_high": 0.6863,
+        "p_value": 1.0602888848448247e-13
+      },
+      "Dependents_Yes": {
+        "hazard_ratio": 0.8629,
+        "ci_low": 0.7287,
+        "ci_high": 1.0218,
+        "p_value": 0.08720311347752738
+      }
+    },
+    "proportional_hazards": {
+      "alpha": 0.01,
+      "p_values": {
+        "Contract_One year": 0.00019701838942325702,
+        "Contract_Two year": 0.5736892590187028,
+        "Dependents_Yes": 0.20075852676070838,
+        "InternetService_Fiber optic": 0.6220019866904406,
+        "InternetService_No": 0.9236379215326637,
+        "MonthlyCharges_per_10usd": 0.029488518707379965,
+        "PaperlessBilling_Yes": 0.7692414130311237,
+        "Partner_Yes": 0.1454078094584612,
+        "PaymentMethod_Credit card (automatic)": 0.06555038649426422,
+        "PaymentMethod_Electronic check": 0.11774669484851318,
+        "PaymentMethod_Mailed check": 0.0347782317771795,
+        "SeniorCitizen": 0.9467946548280319,
+        "n_addon_services": 0.00020031806075636462
+      },
+      "violations": [
+        "Contract_One year",
+        "n_addon_services"
+      ]
+    }
+  },
+  "figures": [
+    "reports/figures/survival_km.png",
+    "reports/figures/survival_cox_hazard_ratios.png"
+  ]
+}

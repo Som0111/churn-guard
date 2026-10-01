@@ -24,6 +24,10 @@ dependencies = [
 [project.optional-dependencies]
 # Per-customer SHAP drivers in /predict. Heavy (numba + llvmlite), so optional.
 explain = ["shap>=0.46"]
+# Evidently renders the HTML drift report only (~400 MB installed); /drift works without it.
+monitor = ["evidently>=0.7"]
+# Kaplan-Meier and Cox time-to-churn analysis (reports only, not needed to serve).
+analysis = ["lifelines>=0.30"]
 dev = ["pytest>=7.4", "pytest-cov>=5.0", "httpx>=0.26", "ruff>=0.4"]
 
 [project.scripts]

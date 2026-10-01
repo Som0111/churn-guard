@@ -1,0 +1,139 @@
+{
+  "unshifted_batch": {
+    "status": "ok",
+    "n_reference": 1000,
+    "n_current": 500,
+    "features_tested": 19,
+    "share_drifted": 0.0,
+    "drifted_features": [],
+    "p_values": {
+      "tenure": 0.282183,
+      "MonthlyCharges": 0.128488,
+      "TotalCharges": 0.090274,
+      "gender": 0.235283,
+      "Partner": 0.522793,
+      "Dependents": 0.398759,
+      "PhoneService": 0.871123,
+      "MultipleLines": 0.524837,
+      "InternetService": 0.37263,
+      "OnlineSecurity": 0.263121,
+      "OnlineBackup": 0.063164,
+      "DeviceProtection": 0.682004,
+      "TechSupport": 0.125097,
+      "StreamingTV": 0.677873,
+      "StreamingMovies": 0.68701,
+      "Contract": 0.510625,
+      "PaperlessBilling": 0.365296,
+      "PaymentMethod": 0.258787,
+      "SeniorCitizen": 0.903436,
+      "churn_probability": 0.746963
+    },
+    "prediction_drift": {
+      "drifted": false,
+      "statistic": 0.037,
+      "p_value": 0.746963,
+      "reference_mean": 0.2626,
+      "current_mean": 0.275
+    },
+    "data_quality": {
+      "missing_rate": {},
+      "overall_missing_rate": 0.0,
+      "unknown_category_rate": {},
+      "overall_unknown_category_rate": 0.0
+    },
+    "thresholds": {
+      "p_value": 0.01,
+      "warning_share": 0.1,
+      "alert_share": 0.3
+    }
+  },
+  "shifted_batch": {
+    "status": "alert",
+    "n_reference": 1000,
+    "n_current": 500,
+    "features_tested": 19,
+    "share_drifted": 0.3158,
+    "drifted_features": [
+      {
+        "feature": "tenure",
+        "test": "ks",
+        "statistic": 0.502,
+        "p_value": 0.0
+      },
+      {
+        "feature": "MonthlyCharges",
+        "test": "ks",
+        "statistic": 0.247418,
+        "p_value": 0.0
+      },
+      {
+        "feature": "TotalCharges",
+        "test": "ks",
+        "statistic": 0.305,
+        "p_value": 0.0
+      },
+      {
+        "feature": "InternetService",
+        "test": "chi2",
+        "statistic": 126.777366,
+        "p_value": 0.0
+      },
+      {
+        "feature": "Contract",
+        "test": "chi2",
+        "statistic": 147.182214,
+        "p_value": 0.0
+      },
+      {
+        "feature": "PaymentMethod",
+        "test": "chi2",
+        "statistic": 159.071792,
+        "p_value": 0.0
+      }
+    ],
+    "p_values": {
+      "tenure": 0.0,
+      "MonthlyCharges": 0.0,
+      "TotalCharges": 0.0,
+      "gender": 0.235283,
+      "Partner": 0.522793,
+      "Dependents": 0.398759,
+      "PhoneService": 0.871123,
+      "MultipleLines": 0.524837,
+      "InternetService": 0.0,
+      "OnlineSecurity": 0.263121,
+      "OnlineBackup": 0.063164,
+      "DeviceProtection": 0.682004,
+      "TechSupport": 0.125097,
+      "StreamingTV": 0.677873,
+      "StreamingMovies": 0.68701,
+      "Contract": 0.0,
+      "PaperlessBilling": 0.365296,
+      "PaymentMethod": 0.0,
+      "SeniorCitizen": 0.903436,
+      "churn_probability": 0.0
+    },
+    "prediction_drift": {
+      "drifted": true,
+      "statistic": 0.247,
+      "p_value": 0.0,
+      "reference_mean": 0.2626,
+      "current_mean": 0.359
+    },
+    "data_quality": {
+      "missing_rate": {
+        "MonthlyCharges": 0.034
+      },
+      "overall_missing_rate": 0.0018,
+      "unknown_category_rate": {
+        "PaymentMethod": 0.148
+      },
+      "overall_unknown_category_rate": 0.0099
+    },
+    "thresholds": {
+      "p_value": 0.01,
+      "warning_share": 0.1,
+      "alert_share": 0.3
+    }
+  }
+}

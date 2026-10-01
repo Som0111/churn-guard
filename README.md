@@ -161,7 +161,7 @@ cd churn-guard
 
 pip install -c constraints.txt -e ".[dev,explain]"   # pinned install (+SHAP drivers)
 python -m churnguard.train  # download data, train, evaluate, write figures (~35s)
-pytest                      # 102 tests
+pytest                      # 129 tests
 uvicorn churnguard.api:app --reload
 ```
 
@@ -233,6 +233,7 @@ drivers, 35.0 ms with.
 | `POST /predict/batch` | Score up to 1,000 in one call |
 | `GET /health` | Liveness + which model artifact is loaded |
 | `GET /metrics` | Full evaluation report from the last training run |
+| `POST /drift` | Compare a recent batch of raw records to the training reference |
 
 ### Docker
 
@@ -312,8 +313,10 @@ churn-guard/
 │   ├── train.py        model comparison, selection, model card
 │   ├── evaluate.py     metrics, threshold optimisation, figures
 │   ├── explain.py      SHAP drivers grouped to original fields
+│   ├── drift.py        drift detection, demo, optional Evidently HTML report
+│   ├── survival.py     Kaplan-Meier + Cox time-to-churn analysis (optional extra)
 │   └── api.py          FastAPI serving layer
-├── tests/              102 tests: data, validation, provenance, features, costs, API, training
+├── tests/              129 tests: data, validation, provenance, features, costs, API, drift, survival, training
 ├── reports/            metrics.json + generated figures
 ├── models/             fitted pipeline + model card
 ├── .github/workflows/  CI on Python 3.12 (production) and 3.11 (compatibility)
@@ -361,7 +364,7 @@ pytest -m "not integration"                  # skip the full training run (~6s)
 pytest --cov=churnguard --cov-report=term-missing
 ```
 
-102 tests across nine areas:
+129 tests across eleven areas:
 
 - **Data contracts** — the target is binary, the zero-tenure fix holds, the train/validation/test
   splits are disjoint and stratified, and neither the target nor the customer ID can leak into features.
@@ -375,6 +378,12 @@ pytest --cov=churnguard --cov-report=term-missing
   validation, that an optimum between old grid points is found, and that test labels never enter the search, plus ECE and reliability-table checks.
 - **Uncertainty** — the bootstrap is seeded and reproducible, its interval contains the point
   estimate, and the sensitivity grid's $50 / 30% cell equals the headline profit.
+- **Survival** — the analysis runs end to end on the cleaned data, validation concordance is stored and
+  above 0.5, Kaplan-Meier curves are valid and correctly ordered, hazard ratios point the expected
+  way, the test split is never used, and the proportional-hazards check covers every covariate.
+- **Drift** — a clean batch is `ok`, a shifted one alerts, unseen categories and missing values are
+  counted, garbled input does not crash, `/drift` works without Evidently, and the module never calls
+  training.
 - **Explanations** — SHAP drivers map to original fields, grouped values are additive, a new
   month-to-month fiber customer is explained by `tenure` or `Contract`, and scoring survives a missing
   or failing explainer.
@@ -397,21 +406,24 @@ tests skip (`--skip-figures`).
 
 ## Honest limitations
 
-- **Static snapshot.** No time dimension, so this predicts *who looks like a churner*, not *when*.
-  A survival model (Cox / Kaplan-Meier) is the right upgrade for timing.
+- **Static snapshot.** The classifier predicts *who looks like a churner*, not *when*. The
+  [time-to-churn analysis](#time-to-churn) addresses timing, but only as a report: it is not served
+  from the API, and tenure is a single snapshot, not a customer history.
 - **Cost parameters are assumptions.** The $50 / $500 / 30% figures are illustrative. The framework
   is the contribution; real numbers would come from the finance team.
-- **No drift monitoring.** A production deployment needs input-distribution and performance
-  monitoring — the `/metrics` endpoint is the hook for it, not the solution.
+- **Drift monitoring covers inputs and predictions only.** `/drift` cannot see model *performance*
+  decay: that needs the true churn outcomes, which arrive weeks later, and no part of this project
+  collects them. Nothing is scheduled; someone has to call `/drift`.
 - **The 30% offer success rate is uncausal.** Properly measuring it requires an uplift model trained
   on a randomised holdout, which is the honest next step.
 
 ## Roadmap
 
 - [ ] Uplift modelling — target *persuadable* customers, not merely likely churners
-- [ ] Survival analysis for time-to-churn
+- [x] Survival analysis for time-to-churn (report only, no API endpoint)
 - [x] SHAP values for per-customer explanations in the API response
-- [ ] Drift monitoring + scheduled retraining
+- [x] Drift monitoring (inputs and predictions)
+- [ ] Scheduled drift checks, outcome-based performance monitoring and retraining
 
 ---
 
@@ -422,6 +434,83 @@ tests skip (`--skip-figures`).
 committed to the repo. The file is verified against a pinned SHA-256 on download and on every load
 (`16320c9c…e91`, 970,457 bytes); a mismatch raises `DatasetIntegrityError` instead of silently
 training on different data.
+
+## Monitoring
+
+![Drift demo](reports/figures/drift_demo.png)
+
+A deployed model degrades silently when the customers it sees stop looking like the ones it was
+built on. `POST /drift` takes a batch of recent raw customer records (at least 50) and compares them to
+a 1,000-row reference sample of the **validation split**, saved inside the model artifact at train time
+together with the model's own predictions on it.
+
+- **Feature drift.** Kolmogorov–Smirnov test for numeric fields, chi-square for categorical ones
+  (`SeniorCitizen` counts as categorical). A field has drifted when `p < 0.01`.
+- **Prediction drift.** The same KS test on the predicted churn probability.
+- **Status.** `ok` below 10% of fields drifted, `warning` from 10% (or if predictions drifted),
+  `alert` from 30%. The thresholds live in [`config.py`](src/churnguard/config.py).
+- **Data quality.** The response also reports each field's missing rate and the share of values outside
+  the known categories. The records are deliberately *not* validated like `/predict` inputs, because new
+  categories and missing values are exactly what this endpoint exists to see.
+- **Detect and alert only.** Nothing retrains or changes the model.
+
+```bash
+python -m churnguard.drift --demo      # clean vs. simulated-shift batch -> reports/drift_demo.json,
+                                       # reports/figures/drift_demo.png, reports/drift_report.html
+```
+
+The demo takes 500 test customers, then makes a shifted copy: tenure and total charges scaled to
+40%, monthly charges up 25%, more fiber and month-to-month customers, 15% paying with an unseen
+`Crypto` method, and 5% of monthly charges blanked. Result: the clean batch is **ok** (0 of 19 fields
+drifted); the shifted batch is **alert** (6 of 19 drifted: `tenure`, `MonthlyCharges`, `TotalCharges`,
+`InternetService`, `Contract`, `PaymentMethod`; predicted risk up from 26.3% to 35.9%). That alert is
+close to its line (6 of 19 is 31.6% against a 30% threshold), so treat the thresholds as a starting
+point to tune on real traffic, not a calibrated alarm.
+
+**Evidently is optional.** The drift verdict uses SciPy, so `/drift` works in the lean install
+(including the live Render deployment). Evidently only renders the HTML report
+(`pip install -c constraints.txt ".[monitor]"`); it adds about 430 MB when installed, which is why it is
+kept out of the Docker and Render builds. The HTML file is not committed (4 MB); the chart above is drawn
+from the demo's own results, not an Evidently screenshot. The Evidently report is configured with the
+same tests and p-value, but it makes its own pass over the data, so its drifted-column list is the one
+to cross-check against, not a second opinion on the status.
+
+## Time to churn
+
+![Kaplan-Meier survival curves](reports/figures/survival_km.png)
+
+The classifier answers *whether* a customer looks like a churner. Survival analysis answers *when*,
+using tenure as the clock ([`survival.py`](src/churnguard/survival.py); full write-up in
+[`reports/survival_summary.md`](reports/survival_summary.md)). Customers who haven't left are
+*censored*: we only know they lasted at least their tenure.
+
+**Hazard vs probability.** A *probability* says how likely a customer is flagged as churned. A
+*hazard* is the rate of leaving at a given tenure among customers still active then, so a hazard ratio
+of 2 means "leaves at twice the rate at any given tenure", not "twice as likely to ever leave".
+
+**Key finding: the contract is the main time-to-churn split.** Of month-to-month customers, 70.3% are
+still active at 12 months and 49.1% at 36 (median tenure at churn: 35 months). For one-year contracts
+the figures are 99.1% and 95.9%; for two-year, 100.0% and 99.9%. Fiber-optic customers fall faster than
+DSL (78.4% vs 86.8% active at 12 months). In a Cox model fit on the training split, holding the other
+covariates fixed, a two-year contract has a hazard ratio of 0.07 and a one-year contract 0.22 relative to
+month-to-month; fiber optic is 1.58 relative to DSL and paying by electronic check is 1.94.
+
+- **Concordance 0.855 on validation** (0.861 on train; 0.5 is chance). It measures how well the model
+  orders who leaves first, which is a different question from ROC-AUC, so the two numbers are not
+  comparable.
+- **Proportional hazards partly fails.** The Schoenfeld test flags 2 of 13 covariates at p < 0.01:
+  `Contract_One year` (p = 0.0002) and `n_addon_services` (p = 0.0002). For those, one hazard ratio is
+  an average over an effect that changes with tenure. The one-year curve declines slowly until about 50 months
+  and then drops steeply (to roughly 57% by month 72), which is what a changing effect looks like. Read
+  those two ratios as summaries; the Kaplan-Meier curves do not assume proportionality.
+- `TotalCharges` is left out of the Cox model because it is about tenure × monthly charge and would
+  leak the clock into the covariates. The 11 tenure-0 customers are dropped (no time at risk).
+- These are associations in observational data, not effects of changing a contract.
+
+```bash
+pip install -c constraints.txt ".[analysis]"   # lifelines; not needed to serve the API
+python -m churnguard.survival                  # writes reports/survival_summary.{md,json} and figures
+```
 
 ## Input validation
 

@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import logging
 from contextlib import asynccontextmanager
-from typing import Literal
+from typing import Any, Literal
 
 import joblib
 import pandas as pd
@@ -22,7 +22,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, model_validator
 
-from churnguard import __version__, config, explain
+from churnguard import __version__, config, drift, explain
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +124,18 @@ class Prediction(BaseModel):
 
 class BatchRequest(BaseModel):
     customers: list[Customer] = Field(..., min_length=1, max_length=1000)
+
+
+class DriftRequest(BaseModel):
+    """Raw customer records from a recent period.
+
+    Deliberately NOT validated like ``Customer``: drift monitoring exists to see
+    data the scoring schema would reject - new categories, missing or garbled values.
+    """
+
+    records: list[dict[str, Any]] = Field(
+        ..., min_length=config.DRIFT_MIN_ROWS, max_length=10_000
+    )
 
 
 def load_model() -> dict:
@@ -260,6 +272,21 @@ def metrics() -> dict:
     if not config.METRICS_PATH.exists():
         raise HTTPException(status_code=404, detail="No metrics report found.")
     return json.loads(config.METRICS_PATH.read_text(encoding="utf-8"))
+
+
+@app.post("/drift", tags=["monitoring"])
+def drift_check(request: DriftRequest) -> dict:
+    """Compare a recent batch to the reference sample saved at training time.
+
+    Detects and reports only; it never retrains or changes the model. Uses
+    SciPy tests, so it works without the optional Evidently package.
+    """
+    if not MODEL or MODEL.get("drift_reference") is None:
+        raise HTTPException(
+            status_code=503,
+            detail="No drift reference loaded. Run `python -m churnguard.train`, then restart.",
+        )
+    return drift.analyse(MODEL, pd.DataFrame(request.records))
 
 
 @app.post("/predict", response_model=Prediction, tags=["scoring"])

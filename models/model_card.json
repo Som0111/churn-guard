@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-10-01T21:21:22+00:00",
+  "generated_at": "2026-10-01T21:46:05+00:00",
   "provenance": {
-    "model_version": "8cd5d51-20261001T212122Z",
-    "git_sha": "8cd5d51",
+    "model_version": "f1e6a59-20261001T214605Z",
+    "git_sha": "f1e6a59",
     "git_dirty": true,
-    "trained_at": "2026-10-01T21:21:22+00:00",
+    "trained_at": "2026-10-01T21:46:05+00:00",
     "dataset": {
       "source_url": "https://raw.githubusercontent.com/IBM/telco-customer-churn-on-icp4d/master/data/Telco-Customer-Churn.csv",
       "sha256": "16320c9c1ec72448db59aa0a26a0b95401046bef5d02fd3aeb906448e3055e91"
@@ -69,7 +69,7 @@
       "cv_roc_auc_std": 0.0135,
       "cv_pr_auc": 0.6659,
       "cv_f1": 0.6332,
-      "fit_seconds": 4.88
+      "fit_seconds": 5.38
     },
     {
       "model": "random_forest",
@@ -77,7 +77,7 @@
       "cv_roc_auc_std": 0.0116,
       "cv_pr_auc": 0.6713,
       "cv_f1": 0.6325,
-      "fit_seconds": 8.75
+      "fit_seconds": 9.04
     },
     {
       "model": "gradient_boosting",
@@ -85,7 +85,7 @@
       "cv_roc_auc_std": 0.0111,
       "cv_pr_auc": 0.6578,
       "cv_f1": 0.6244,
-      "fit_seconds": 2.84
+      "fit_seconds": 3.1
     }
   ],
   "split_sizes": {
