@@ -128,7 +128,7 @@ cd churn-guard
 
 pip install -c constraints.txt -e ".[dev]"   # pinned install
 python -m churnguard.train  # download data, train, evaluate, write figures (~35s)
-pytest                      # 33 tests
+pytest                      # 63 tests
 uvicorn churnguard.api:app --reload
 ```
 
@@ -249,7 +249,7 @@ churn-guard/
 │   ├── train.py        model comparison, selection, model card
 │   ├── evaluate.py     metrics, threshold optimisation, figures
 │   └── api.py          FastAPI serving layer
-├── tests/              33 tests: data contracts, integrity, provenance, features, costs, API
+├── tests/              63 tests: data contracts, validation, integrity, provenance, features, costs, API
 ├── reports/            metrics.json + generated figures
 ├── models/             fitted pipeline + model card
 ├── .github/workflows/  CI on Python 3.12 (production) and 3.11 (compatibility)
@@ -295,10 +295,13 @@ stakeholder actually asks: *how much worse is this model without that column?*
 pytest -v
 ```
 
-33 tests across five areas:
+63 tests across six areas:
 
 - **Data contracts** — the target is binary, the zero-tenure fix holds, the train/validation/test
   splits are disjoint and stratified, and neither the target nor the customer ID can leak into features.
+- **Validation** — missing columns, bad target values, malformed numerics, unknown categories and
+  invalid `CostModel` values fail early with a readable message; out-of-range, NaN and infinite API
+  inputs return a clean 422.
 - **Integrity and provenance** — a tampered dataset raises `DatasetIntegrityError`, and the model
   report contains the git SHA, dataset hash, hyperparameters and library versions.
 - **Feature engineering** — zero tenure never divides by zero, add-on counting is correct.
@@ -339,6 +342,21 @@ CI runs lint, a full training run, and the suite on three Python versions on eve
 committed to the repo. The file is verified against a pinned SHA-256 on download and on every load
 (`16320c9c…e91`, 970,457 bytes); a mismatch raises `DatasetIntegrityError` instead of silently
 training on different data.
+
+## Input validation
+
+Bad data or config fails early instead of training on garbage:
+
+- **Raw data** is checked right after load (`data.validate_raw`): required columns, non-null customer
+  ID, target in `{Yes, No}`, every categorical within its allowed set, numeric columns parseable and
+  in range. One error lists every problem found. Blank `TotalCharges` is still accepted — those are the
+  documented tenure-0 customers.
+- **`CostModel`** raises `ValueError` for a negative offer cost or lifetime value, or a success rate
+  outside `[0, 1]` (NaN included).
+- **API** requests are bounded (tenure 0–100, `MonthlyCharges` ≤ 1,000, `TotalCharges` ≤ 100,000,
+  no NaN/Infinity) and carry one conservative consistency check: a customer with tenure 0 cannot have
+  `TotalCharges` above one month's charge. 422 responses list the field and message only; they do not
+  echo the rejected input back.
 
 ## Model provenance
 

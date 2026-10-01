@@ -37,6 +37,59 @@ def verify_checksum(content: bytes, source: str | Path) -> str:
     return digest
 
 
+class DataValidationError(ValueError):
+    """The raw data does not match the expected schema."""
+
+
+def validate_raw(df: pd.DataFrame) -> None:
+    """Check the raw frame against the schema; raise one error listing every problem."""
+    required = [config.ID_COLUMN, config.TARGET, *config.FEATURES]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise DataValidationError(f"Missing required column(s): {missing}")
+
+    problems: list[str] = []
+
+    if df[config.ID_COLUMN].isna().any():
+        problems.append(f"{config.ID_COLUMN}: {int(df[config.ID_COLUMN].isna().sum())} null id(s)")
+
+    bad_target = sorted(set(df[config.TARGET].dropna().astype(str)) - set(config.TARGET_VALUES))
+    if bad_target or df[config.TARGET].isna().any():
+        problems.append(
+            f"{config.TARGET}: values must be one of {list(config.TARGET_VALUES)}, "
+            f"found {bad_target + (['<null>'] if df[config.TARGET].isna().any() else [])}"
+        )
+
+    for col, allowed in config.ALLOWED_CATEGORIES.items():
+        unknown = sorted(set(df[col].dropna().astype(str)) - set(allowed))
+        if unknown or df[col].isna().any():
+            problems.append(
+                f"{col}: unknown category {unknown + (['<null>'] if df[col].isna().any() else [])}, "
+                f"allowed {list(allowed)}"
+            )
+
+    for col, (low, high) in config.NUMERIC_RANGES.items():
+        raw = df[col]
+        values = pd.to_numeric(raw, errors="coerce")
+        # TotalCharges legitimately ships blank for tenure-0 customers; clean() handles those.
+        blank = raw.astype(str).str.strip().eq("") if col == "TotalCharges" else False
+        malformed = values.isna() & ~blank
+        if malformed.any():
+            problems.append(
+                f"{col}: {int(malformed.sum())} non-numeric or missing value(s), "
+                f"e.g. {raw[malformed].iloc[0]!r}"
+            )
+        out_of_range = values.notna() & ((values < low) | (values > high))
+        if out_of_range.any():
+            problems.append(
+                f"{col}: {int(out_of_range.sum())} value(s) outside [{low}, {high}], "
+                f"e.g. {values[out_of_range].iloc[0]}"
+            )
+
+    if problems:
+        raise DataValidationError("Raw data failed validation:\n- " + "\n- ".join(problems))
+
+
 def download(force: bool = False) -> None:
     """Fetch the raw CSV once and cache it under ``data/raw``."""
     config.ensure_dirs()
@@ -59,7 +112,9 @@ def load_raw() -> pd.DataFrame:
     if not config.RAW_CSV.exists():
         download()
     verify_checksum(config.RAW_CSV.read_bytes(), config.RAW_CSV)
-    return pd.read_csv(config.RAW_CSV)
+    df = pd.read_csv(config.RAW_CSV)
+    validate_raw(df)
+    return df
 
 
 def clean(df: pd.DataFrame) -> pd.DataFrame:

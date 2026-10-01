@@ -17,9 +17,10 @@ from typing import Literal
 
 import joblib
 import pandas as pd
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel, Field, model_validator
 
 from churnguard import __version__, config
 
@@ -55,8 +56,23 @@ class Customer(BaseModel):
         "Bank transfer (automatic)",
         "Credit card (automatic)",
     ] = "Electronic check"
-    MonthlyCharges: float = Field(..., ge=0, le=1000)
-    TotalCharges: float = Field(..., ge=0)
+    MonthlyCharges: float = Field(
+        ..., ge=0, le=config.NUMERIC_RANGES["MonthlyCharges"][1], allow_inf_nan=False
+    )
+    TotalCharges: float = Field(
+        ..., ge=0, le=config.NUMERIC_RANGES["TotalCharges"][1], allow_inf_nan=False
+    )
+
+    @model_validator(mode="after")
+    def _zero_tenure_has_no_history(self) -> Customer:
+        # Deliberately loose: a brand-new customer can carry a first partial bill,
+        # but not more than one month's charge. Everything else is left to the model.
+        if self.tenure == 0 and self.TotalCharges > self.MonthlyCharges:
+            raise ValueError(
+                "TotalCharges exceeds MonthlyCharges for a customer with tenure 0; "
+                "a brand-new customer cannot have more than one month of billing"
+            )
+        return self
 
     model_config = {
         "json_schema_extra": {
@@ -131,6 +147,19 @@ app = FastAPI(
     version=__version__,
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Readable 422s: field + message only.
+
+    The default body echoes the rejected input, which crashes the response for
+    NaN/Infinity (not valid JSON) and would also echo customer data back.
+    """
+    detail = [
+        {"loc": list(e["loc"]), "msg": e["msg"], "type": e["type"]} for e in exc.errors()
+    ]
+    return JSONResponse(status_code=422, content={"detail": detail})
 
 
 def _risk_band(probability: float, threshold: float) -> str:

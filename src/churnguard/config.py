@@ -68,6 +68,40 @@ CATEGORICAL_FEATURES = [
 
 FEATURES = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 
+_YES_NO = ("Yes", "No")
+_YES_NO_NOINTERNET = ("Yes", "No", "No internet service")
+ALLOWED_CATEGORIES = {
+    "gender": ("Male", "Female"),
+    "Partner": _YES_NO,
+    "Dependents": _YES_NO,
+    "PhoneService": _YES_NO,
+    "MultipleLines": ("Yes", "No", "No phone service"),
+    "InternetService": ("DSL", "Fiber optic", "No"),
+    "OnlineSecurity": _YES_NO_NOINTERNET,
+    "OnlineBackup": _YES_NO_NOINTERNET,
+    "DeviceProtection": _YES_NO_NOINTERNET,
+    "TechSupport": _YES_NO_NOINTERNET,
+    "StreamingTV": _YES_NO_NOINTERNET,
+    "StreamingMovies": _YES_NO_NOINTERNET,
+    "Contract": ("Month-to-month", "One year", "Two year"),
+    "PaperlessBilling": _YES_NO,
+    "PaymentMethod": (
+        "Electronic check",
+        "Mailed check",
+        "Bank transfer (automatic)",
+        "Credit card (automatic)",
+    ),
+}
+TARGET_VALUES = ("Yes", "No")
+
+# Inclusive numeric bounds, shared by the data check and the API schema.
+NUMERIC_RANGES = {
+    "tenure": (0, 100),
+    "MonthlyCharges": (0.0, 1000.0),
+    "TotalCharges": (0.0, 100_000.0),
+    "SeniorCitizen": (0, 1),
+}
+
 RANDOM_STATE = 42
 VAL_SIZE = 0.2   # threshold tuning only
 TEST_SIZE = 0.2  # final report only, scored once
@@ -95,6 +129,19 @@ class CostModel:
     offer_cost: float = 50.0            # incentive handed to a flagged customer
     customer_lifetime_value: float = 500.0   # margin lost when a customer leaves
     offer_success_rate: float = 0.30    # share of true churners the offer saves
+
+    def __post_init__(self) -> None:
+        # `not (a <= x <= b)` also rejects NaN, which every comparison fails.
+        if not self.offer_cost >= 0:
+            raise ValueError(f"offer_cost must be >= 0, got {self.offer_cost!r}")
+        if not self.customer_lifetime_value >= 0:
+            raise ValueError(
+                f"customer_lifetime_value must be >= 0, got {self.customer_lifetime_value!r}"
+            )
+        if not 0 <= self.offer_success_rate <= 1:
+            raise ValueError(
+                f"offer_success_rate must be between 0 and 1, got {self.offer_success_rate!r}"
+            )
 
     @property
     def true_positive_value(self) -> float:

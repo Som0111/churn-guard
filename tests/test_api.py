@@ -6,6 +6,8 @@ check that a raw customer dict survives feature engineering and scoring.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -120,3 +122,43 @@ def test_metrics_report_carries_provenance(client):
     prov = client.get("/metrics").json()["provenance"]
     assert prov["dataset"]["sha256"] == config.DATA_SHA256
     assert prov["model_version"].startswith(prov["git_sha"])
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("tenure", 101),
+        ("MonthlyCharges", -1.0),
+        ("MonthlyCharges", 1000.01),
+        ("TotalCharges", -1.0),
+        ("TotalCharges", 1e9),
+    ],
+)
+def test_out_of_range_numbers_are_rejected(client, field, value):
+    response = client.post("/predict", json={**HIGH_RISK, field: value})
+    assert response.status_code == 422
+    assert field in str(response.json()["detail"])
+
+
+@pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+@pytest.mark.parametrize("field", ["MonthlyCharges", "TotalCharges"])
+def test_nan_and_infinity_are_rejected(client, field, literal):
+    body = "{" + ", ".join(
+        f'"{k}": {literal if k == field else json.dumps(v)}' for k, v in HIGH_RISK.items()
+    ) + "}"
+    response = client.post("/predict", content=body, headers={"content-type": "application/json"})
+    assert response.status_code == 422
+
+
+def test_zero_tenure_with_large_total_is_rejected_with_a_clear_message(client):
+    response = client.post(
+        "/predict", json={**HIGH_RISK, "tenure": 0, "MonthlyCharges": 50.0, "TotalCharges": 2000.0}
+    )
+    assert response.status_code == 422
+    assert "tenure 0" in response.json()["detail"][0]["msg"]
+
+
+def test_zero_tenure_edge_cases_are_still_accepted(client):
+    for total in (0.0, 30.0, 50.0):  # none, partial first bill, exactly one month
+        r = client.post("/predict", json={**HIGH_RISK, "tenure": 0, "MonthlyCharges": 50.0, "TotalCharges": total})
+        assert r.status_code == 200, total
