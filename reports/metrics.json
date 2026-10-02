@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-10-02T05:17:40+00:00",
+  "generated_at": "2026-10-02T05:37:23+00:00",
   "provenance": {
-    "model_version": "1706198-20261002T051740Z",
-    "git_sha": "1706198",
+    "model_version": "018d6a7-20261002T053723Z",
+    "git_sha": "018d6a7",
     "git_dirty": true,
-    "trained_at": "2026-10-02T05:17:40+00:00",
+    "trained_at": "2026-10-02T05:37:23+00:00",
     "dataset": {
       "source_url": "https://raw.githubusercontent.com/IBM/telco-customer-churn-on-icp4d/master/data/Telco-Customer-Churn.csv",
       "sha256": "16320c9c1ec72448db59aa0a26a0b95401046bef5d02fd3aeb906448e3055e91"
@@ -69,7 +69,7 @@
       "cv_roc_auc_std": 0.0135,
       "cv_pr_auc": 0.6659,
       "cv_f1": 0.6332,
-      "fit_seconds": 5.94
+      "fit_seconds": 5.78
     },
     {
       "model": "random_forest",
@@ -77,7 +77,7 @@
       "cv_roc_auc_std": 0.0116,
       "cv_pr_auc": 0.6713,
       "cv_f1": 0.6325,
-      "fit_seconds": 10.22
+      "fit_seconds": 9.68
     },
     {
       "model": "gradient_boosting",
@@ -85,7 +85,7 @@
       "cv_roc_auc_std": 0.0111,
       "cv_pr_auc": 0.6578,
       "cv_f1": 0.6244,
-      "fit_seconds": 3.62
+      "fit_seconds": 3.15
     }
   ],
   "split_sizes": {
@@ -816,64 +816,64 @@
   },
   "top_drivers": [
     {
-      "feature": "tenure",
-      "roc_auc_drop_when_shuffled": 0.37465,
-      "std": 0.0081
-    },
-    {
-      "feature": "TotalCharges",
-      "roc_auc_drop_when_shuffled": 0.09648,
-      "std": 0.00828
+      "feature": "tenure + TotalCharges",
+      "roc_auc_drop_when_shuffled": 0.11003,
+      "std": 0.00934
     },
     {
       "feature": "Contract",
-      "roc_auc_drop_when_shuffled": 0.04558,
-      "std": 0.00472
+      "roc_auc_drop_when_shuffled": 0.05082,
+      "std": 0.00822
     },
     {
       "feature": "MonthlyCharges",
-      "roc_auc_drop_when_shuffled": 0.03153,
-      "std": 0.00517
+      "roc_auc_drop_when_shuffled": 0.0327,
+      "std": 0.00324
     },
     {
       "feature": "InternetService",
-      "roc_auc_drop_when_shuffled": 0.0238,
-      "std": 0.00671
-    },
-    {
-      "feature": "MultipleLines",
-      "roc_auc_drop_when_shuffled": 0.00334,
-      "std": 0.00129
+      "roc_auc_drop_when_shuffled": 0.02305,
+      "std": 0.00456
     },
     {
       "feature": "TechSupport",
-      "roc_auc_drop_when_shuffled": 0.00293,
-      "std": 0.00076
-    },
-    {
-      "feature": "OnlineSecurity",
-      "roc_auc_drop_when_shuffled": 0.00288,
-      "std": 0.00101
-    },
-    {
-      "feature": "StreamingTV",
-      "roc_auc_drop_when_shuffled": 0.00262,
-      "std": 0.00191
-    },
-    {
-      "feature": "PaymentMethod",
-      "roc_auc_drop_when_shuffled": 0.00243,
-      "std": 0.00113
-    },
-    {
-      "feature": "PaperlessBilling",
-      "roc_auc_drop_when_shuffled": 0.00215,
-      "std": 0.00142
+      "roc_auc_drop_when_shuffled": 0.00271,
+      "std": 0.00099
     },
     {
       "feature": "StreamingMovies",
-      "roc_auc_drop_when_shuffled": 0.00201,
-      "std": 0.00125
+      "roc_auc_drop_when_shuffled": 0.00218,
+      "std": 0.00173
+    },
+    {
+      "feature": "PaperlessBilling",
+      "roc_auc_drop_when_shuffled": 0.00199,
+      "std": 0.00096
+    },
+    {
+      "feature": "StreamingTV",
+      "roc_auc_drop_when_shuffled": 0.0019,
+      "std": 0.00204
+    },
+    {
+      "feature": "OnlineSecurity",
+      "roc_auc_drop_when_shuffled": 0.00185,
+      "std": 0.00128
+    },
+    {
+      "feature": "PaymentMethod",
+      "roc_auc_drop_when_shuffled": 0.0018,
+      "std": 0.00074
+    },
+    {
+      "feature": "MultipleLines",
+      "roc_auc_drop_when_shuffled": 0.0016,
+      "std": 0.00151
+    },
+    {
+      "feature": "SeniorCitizen",
+      "roc_auc_drop_when_shuffled": 0.00151,
+      "std": 0.0004
     }
   ],
   "figures": [

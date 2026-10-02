@@ -145,3 +145,36 @@ def test_a_failing_explainer_does_not_fail_the_score(client, monkeypatch):
     monkeypatch.setitem(api.MODEL, "explainer", Boom())
     response = client.post("/predict", json=HIGH_RISK)
     assert response.status_code == 200 and response.json()["top_drivers"] is None
+
+
+# --------------------------------------------------------------------------- #
+# Permutation importance: linked fields must be shuffled together
+# --------------------------------------------------------------------------- #
+def test_shuffling_tenure_alone_creates_impossible_rows_and_overstates_importance(data):
+    from churnguard.train import PERMUTATION_GROUPS, permutation_drop
+
+    X, y = data
+    model, _ = _fit(LogisticRegression(max_iter=500), data)
+    alone, _ = permutation_drop(model, X, y, ["tenure"], n_repeats=5)
+    joint, _ = permutation_drop(model, X, y, PERMUTATION_GROUPS["tenure + TotalCharges"], n_repeats=5)
+    assert joint < alone  # the joint shuffle does not manufacture impossible customers
+
+
+def test_permutation_drop_is_seeded_and_positive_for_an_informative_field(data):
+    from churnguard.train import permutation_drop
+
+    X, y = data
+    model, _ = _fit(LogisticRegression(max_iter=500), data)
+    a = permutation_drop(model, X, y, ["Contract"], n_repeats=4)
+    assert a == permutation_drop(model, X, y, ["Contract"], n_repeats=4)
+    assert a[0] > 0
+
+
+def test_top_drivers_reports_the_linked_block_as_one_unit(data):
+    from churnguard.train import top_drivers
+
+    X, y = data
+    model, _ = _fit(LogisticRegression(max_iter=500), data)
+    names = [d["feature"] for d in top_drivers(model, X, y, top_n=30)]
+    assert "tenure + TotalCharges" in names
+    assert "tenure" not in names and "TotalCharges" not in names

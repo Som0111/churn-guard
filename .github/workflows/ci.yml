@@ -34,7 +34,7 @@ jobs:
         run: python -m churnguard.train --skip-figures
 
       - name: Test
-        run: pytest -v --cov=churnguard --cov-report=term-missing --cov-fail-under=77
+        run: pytest -v --cov=churnguard --cov-report=term-missing --cov-fail-under=79
 
       - name: Upload model report
         if: always()
@@ -58,6 +58,13 @@ jobs:
 
       - name: Smoke test (/health/ready and /predict)
         run: bash scripts/smoke_test.sh http://localhost:8000
+
+      - name: Model version records the commit (not "unknown")
+        run: |
+          VERSION=$(curl -fsS http://localhost:8000/model-info | python3 -c "import sys,json; print(json.load(sys.stdin)['model_version'])")
+          echo "model_version=${VERSION}"
+          test "${VERSION#unknown}" = "${VERSION}"
+          test "${VERSION%%-*}" = "$(echo '${{ github.sha }}' | cut -c1-7)"
 
       - name: Runs as a non-root user
         run: test "$(docker exec churnguard id -u)" != "0"

@@ -8,9 +8,12 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
-# Commit this image was built from (no .git inside the build context).
-ARG GIT_SHA=unknown
-ENV GIT_SHA=$GIT_SHA
+# The build context has no .git, so the commit is passed in and recorded in the model
+# version. CI passes GIT_SHA; Render exposes RENDER_GIT_COMMIT. Empty = not provided.
+ARG GIT_SHA=""
+ARG RENDER_GIT_COMMIT=""
+ENV GIT_SHA=$GIT_SHA \
+    RENDER_GIT_COMMIT=$RENDER_GIT_COMMIT
 
 # pyproject.toml is the single source of truth; constraints.txt pins every resolved version.
 COPY pyproject.toml constraints.txt README.md ./

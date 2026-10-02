@@ -4,6 +4,11 @@
 # is always pickled by the exact scikit-learn build that will unpickle it. It
 # also means every deploy re-proves that the pipeline runs end to end on a
 # clean machine.
+#
+# Live instance: https://churn-guard-api.onrender.com
+# RENDER_GIT_COMMIT is set by Render at build time and is recorded in the model
+# version (/model-info). If the service is Docker-based instead, declare
+# `ARG RENDER_GIT_COMMIT` (the Dockerfile already does) so it reaches the build.
 services:
   - type: web
     name: churnguard-api

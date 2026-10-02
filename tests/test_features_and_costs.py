@@ -55,8 +55,11 @@ def test_addon_services_are_counted(sample):
     assert out["n_addon_services"].tolist() == [0, 3, 5]
 
 
-def test_spend_ratio_flags_a_recent_price_rise(sample):
-    """Customer 1 pays 50/mo now but averaged 50 historically -> ratio 1.0."""
+def test_spend_ratio_is_current_charge_over_lifetime_average(sample):
+    """Customer 1 pays 50/mo now and averaged 50 over their life -> ratio 1.0.
+
+    The ratio compares two numbers; it does not establish that a price changed.
+    """
     out = features.add_domain_features(sample)
     assert out.loc[1, "spend_vs_current_ratio"] == pytest.approx(1.0)
 

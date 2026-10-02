@@ -25,9 +25,8 @@ import pandas as pd
 from sklearn.base import clone
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
-from sklearn.inspection import permutation_importance
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import brier_score_loss
+from sklearn.metrics import brier_score_loss, roc_auc_score
 from sklearn.model_selection import StratifiedKFold, cross_validate
 from sklearn.pipeline import Pipeline
 
@@ -188,38 +187,55 @@ def compare_calibration(best_name, X_train, y_train, X_val, y_val):
     return winner, fitted[winner], val_proba, report
 
 
+# Fields whose engineered features are computed from each other, so they must be
+# shuffled TOGETHER: shuffling tenure alone against a fixed TotalCharges produces
+# impossible customers (avg_monthly_spend = TotalCharges / tenure explodes from
+# ~$115 to ~$5,800) and drives AUC below chance. See
+# scripts/investigate_permutation_importance.py.
+PERMUTATION_GROUPS = {"tenure + TotalCharges": ["tenure", "TotalCharges"]}
+
+
+def permutation_drop(
+    pipeline, X: pd.DataFrame, y: pd.Series, columns: list[str], n_repeats: int = 8,
+    seed: int = config.RANDOM_STATE,
+) -> tuple[float, float]:
+    """Mean and std of the ROC-AUC lost when ``columns`` are shuffled as one block.
+
+    The block's rows move together, so relationships *inside* the block survive;
+    only their link to the target and to the other fields is broken.
+    """
+    rng = np.random.default_rng(seed)
+    y_true = y.to_numpy()
+    base = roc_auc_score(y_true, pipeline.predict_proba(X)[:, 1])
+    block = X[columns].to_numpy()
+    drops = []
+    for _ in range(n_repeats):
+        shuffled = X.copy()
+        shuffled[columns] = block[rng.permutation(len(X))]
+        drops.append(base - roc_auc_score(y_true, pipeline.predict_proba(shuffled)[:, 1]))
+    return float(np.mean(drops)), float(np.std(drops))
+
+
 def top_drivers(
     pipeline: Pipeline, X_test: pd.DataFrame, y_test: pd.Series, top_n: int = 12
 ) -> list[dict]:
-    """Permutation importance - model agnostic, measured on held-out data."""
-    result = permutation_importance(
-        pipeline,
-        X_test,
-        y_test,
-        n_repeats=8,
-        random_state=config.RANDOM_STATE,
-        scoring="roc_auc",
-        n_jobs=-1,
-    )
-    ranked = (
-        pd.DataFrame(
+    """Permutation importance on held-out data: AUC lost when a field (or linked block) is shuffled.
+
+    A measure of how much this *model* relies on a field, not of what causes churn.
+    """
+    grouped = {c for cols in PERMUTATION_GROUPS.values() for c in cols}
+    units = {**{c: [c] for c in X_test.columns if c not in grouped}, **PERMUTATION_GROUPS}
+    rows = []
+    for name, columns in units.items():
+        mean, std = permutation_drop(pipeline, X_test, y_test, columns)
+        rows.append(
             {
-                "feature": X_test.columns,
-                "importance": result.importances_mean,
-                "std": result.importances_std,
+                "feature": name,
+                "roc_auc_drop_when_shuffled": round(mean, 5),
+                "std": round(std, 5),
             }
         )
-        .sort_values("importance", ascending=False)
-        .head(top_n)
-    )
-    return [
-        {
-            "feature": row.feature,
-            "roc_auc_drop_when_shuffled": round(float(row.importance), 5),
-            "std": round(float(row.std), 5),
-        }
-        for row in ranked.itertuples()
-    ]
+    return sorted(rows, key=lambda r: -r["roc_auc_drop_when_shuffled"])[:top_n]
 
 
 def plot_importance(drivers: list[dict]) -> str:
@@ -236,13 +252,32 @@ def plot_importance(drivers: list[dict]) -> str:
         xerr=frame["std"],
         color="#2563eb",
     )
-    ax.set_xlabel("Drop in test ROC-AUC when the feature is shuffled")
-    ax.set_title("What actually drives churn predictions")
+    ax.set_xlabel("Drop in test ROC-AUC when the field is shuffled")
+    ax.set_title("What the model relies on (not a causal ranking)")
     fig.tight_layout()
     path = config.FIGURE_DIR / "feature_importance.png"
     fig.savefig(path, dpi=140)
     plt.close(fig)
     return evaluate._repo_relative(path)
+
+
+def _commit_sha() -> tuple[str, bool | None]:
+    """(short SHA, tree dirty?) for the code being trained.
+
+    A Docker or Render build has no .git, so the commit comes from the environment:
+    ``GIT_SHA`` (docker build --build-arg / CI) or ``RENDER_GIT_COMMIT``. An empty
+    value or the literal "unknown" counts as not provided. ``dirty`` is None when
+    it cannot be known (no git).
+    """
+    for name in ("GIT_SHA", "RENDER_GIT_COMMIT"):
+        value = os.environ.get(name, "").strip()
+        if value and value != "unknown":
+            return value[:7], None
+    sha = _git("rev-parse", "--short", "HEAD")
+    if sha is None:
+        return "unknown", None
+    status = _git("status", "--porcelain")
+    return sha, None if status is None else bool(status)
 
 
 def _git(*args: str) -> str | None:
@@ -264,8 +299,7 @@ def build_provenance(
     model, calibration: str, splits: dict[str, pd.Series], trained_at: datetime
 ) -> dict:
     """Everything needed to say exactly which data, code and libraries made a model."""
-    # GIT_SHA lets a Docker build (which has no .git) record the commit it was built from.
-    git_sha = os.environ.get("GIT_SHA") or _git("rev-parse", "--short", "HEAD") or "unknown"
+    git_sha, git_dirty = _commit_sha()
     stamp = trained_at.strftime("%Y%m%dT%H%M%SZ")
     params = {
         k: v if isinstance(v, (int, float, str, bool, type(None))) else str(v)
@@ -274,7 +308,7 @@ def build_provenance(
     return {
         "model_version": f"{git_sha}-{stamp}",
         "git_sha": git_sha,
-        "git_dirty": bool(_git("status", "--porcelain")),
+        "git_dirty": git_dirty,
         "trained_at": trained_at.isoformat(timespec="seconds"),
         "dataset": {"source_url": config.DATA_URL, "sha256": config.DATA_SHA256},
         "estimator": type(_final_estimator(model)).__name__,

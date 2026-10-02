@@ -50,9 +50,10 @@ def add_domain_features(df: pd.DataFrame) -> pd.DataFrame:
     """Add features a churn analyst would actually ask for.
 
     * ``avg_monthly_spend`` - lifetime spend normalised by tenure.
-    * ``spend_vs_current_ratio`` - current bill against the historical
-      average; a value above 1 means the customer was recently up-priced,
-      which is a classic churn trigger.
+    * ``spend_vs_current_ratio`` - this month's charge divided by the
+      customer's lifetime average monthly charge. Above 1 means they pay more
+      now than they averaged; it is NOT a measured price rise (the data has no
+      billing history), and it is also affected by plan changes and add-ons.
     * ``n_addon_services`` - each extra service is another switching cost.
     """
     df = df.copy()

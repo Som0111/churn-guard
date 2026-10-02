@@ -7,19 +7,27 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
-**[▶ Try the live API](https://churn-guard-qj1j.onrender.com/docs)** — score a customer in your browser.
-*(Free tier: the first request after a quiet spell takes ~50s to wake the instance. This public endpoint is an
+**[▶ Try the live API](https://churn-guard-api.onrender.com/docs)** — score a customer in your browser.
+*(Free tier: an idle instance sleeps and the first request after it can take most of a minute to wake — 43s
+was observed on 2026-10-02; a warm request took under a second. This public endpoint is an
 **unauthenticated demo**: no API key, no rate limit — do not send real customer data to it.)*
 
 > Most churn projects stop at "85% accuracy." That number is worse than useless here — predicting
 > *nobody* churns scores 73% on this dataset. ChurnGuard optimises the thing the business actually
 > pays for: **the profit of the retention campaign the model triggers.**
 
-On a held-out test set of 1,409 customers, the model-targeted campaign returns **+$15,900 (90% interval $13,000 to $18,600)** where the
-blanket "email everyone" campaign that most teams actually run **loses $14,350** (interval −$18,850 to −$10,450) — a **$30,250
-swing**, or **$11.28 of margin per customer scored**. All dollar figures rest on assumed costs, not observed
-outcomes: a $50 offer, $500 customer value and a 30% save rate (see [sensitivity](#how-sensitive-is-this-to-the-assumptions)). The threshold behind that number was chosen on
-a separate validation split, not on the test set.
+On a held-out test set of 1,409 customers, a model-targeted retention campaign is projected to net
+**+$15,900 (90% interval $13,000 to $18,600)**, where the blanket "email everyone" campaign **loses $14,350**
+(interval −$18,850 to −$10,450) — a **$30,250 swing**, or **$11.28 of margin per customer scored**. These are
+*projections under assumed costs*, not observed outcomes: a $50 offer, $500 customer value and a 30% save rate
+(see [sensitivity](#how-sensitive-is-this-to-the-assumptions) and
+[what this project does not prove](#what-this-project-does-not-prove)). The threshold behind that number was
+chosen on a separate validation split, not on the test set.
+
+More detail: [CHANGELOG](CHANGELOG.md) (what changed, with before/after numbers) ·
+[docs/DECISIONS.md](docs/DECISIONS.md) (why each choice was made).
+
+---
 
 ---
 
@@ -107,22 +115,40 @@ re-prices the *shipped* threshold (0.38, not re-tuned) across save rate 10–50%
   20%); at $100 it needs about 35%. If the real save rate is 10%, this campaign loses $9,400 at $50.
 - **The model beats the blanket campaign in 140 of 144 cells.** Blanket mailing only ties or wins when
   offers are very cheap and very effective ($25 at 40%+ save rate, $30 at 50%). Outside that corner,
-  targeting is worth it whatever the exact numbers are.
+  targeting beats the blanket campaign everywhere on this grid.
 
-### What drives churn
+### What the model relies on
 
-![Feature importance](reports/figures/feature_importance.png)
+![What the model relies on](reports/figures/feature_importance.png)
 
-Permutation importance on held-out data (drop in test ROC-AUC when a feature is shuffled):
+Permutation importance on held-out data: how much test ROC-AUC the model **loses** when a field is shuffled.
+This describes the *model*, not the world — a field the model leans on is **strongly associated with higher
+predicted churn**, which is not evidence that changing it would change anyone's behaviour.
 
-1. **`tenure`** (−0.375) — by a wide margin. Churn is overwhelmingly an early-life problem.
-2. **`TotalCharges`** (−0.096) — proxy for accumulated relationship value.
-3. **`Contract`** (−0.046) — month-to-month customers have no exit friction.
-4. **`MonthlyCharges`** (−0.032) — price sensitivity.
-5. **`InternetService`** (−0.024) — fiber customers churn hardest, the classic signal in this dataset.
+| Field | AUC lost when shuffled |
+|---|---|
+| **`tenure` + `TotalCharges`** (shuffled together) | **0.110** |
+| `Contract` | 0.051 |
+| `MonthlyCharges` | 0.033 |
+| `InternetService` | 0.023 |
+| every other field | ≤ 0.003 each |
 
-**Actionable read:** the highest-leverage intervention is moving new fiber customers onto an annual
-contract inside their first six months, not discounting the back book.
+- **Shorter tenure and month-to-month contracts are strongly associated with higher predicted churn**, and
+  fiber-optic customers have higher observed churn than DSL customers in this dataset. The survival analysis
+  below shows the same pattern in time-to-churn terms.
+- **`tenure` and `TotalCharges` are shuffled as one block on purpose.** An earlier version shuffled `tenure`
+  alone and reported a drop of 0.375 — more than the model's whole headroom above a coin flip (0.846 − 0.5 =
+  0.346). Cause: `avg_monthly_spend` is `TotalCharges ÷ tenure`, so shuffling tenure against a fixed
+  `TotalCharges` manufactures impossible customers (that feature's 99th percentile goes from $115 to
+  $6,327; `spend_vs_current_ratio` from 1.2 to 68.0), and the model's score on them is worse than random
+  (AUC 0.452). The 0.375 measured how badly the model copes with nonsense rows, not how much it needs tenure.
+  Shuffling the five tenure-derived features together in the model's own input space gives 0.114, in line with
+  the joint 0.110. Reproduce with
+  [`scripts/investigate_permutation_importance.py`](scripts/investigate_permutation_importance.py).
+- Importance is split across redundant features: `tenure`, `tenure_years` and `is_new_customer` lose only
+  ~0.017 each when shuffled alone, because the others still carry the signal.
+- `spend_vs_current_ratio` is this month's charge divided by the customer's *lifetime average* charge. It is
+  **not** a measured price rise — the dataset has no billing history.
 
 ### Model quality
 
@@ -152,8 +178,6 @@ split the winner scores Brier 0.136 and ECE 0.020. Ranking quality is essentiall
 0.38. ECE here uses 10 equal-count bins, and the validation split was used both to pick the variant and
 to tune the threshold, so the figures carry a small selection effect.
 
----
-
 ## Quickstart
 
 ```bash
@@ -162,9 +186,12 @@ cd churn-guard
 
 pip install -c constraints.txt -e ".[dev,explain]"   # pinned install (+SHAP drivers)
 python -m churnguard.train  # download data, train, evaluate, write figures (~35s)
-pytest                      # 139 tests
+pytest                      # 150 tests (~3 min; add -m "not integration" to skip the training run)
 uvicorn churnguard.api:app --reload
 ```
+
+The `explain` extra (SHAP) adds about 150 MB; for a lean install use `pip install -c constraints.txt -e ".[dev]"` and the API
+scores without `top_drivers`. Other optional extras: `monitor` (Evidently HTML drift report) and `analysis` (survival).
 
 **Production Python is 3.12** (Docker, Render and the instructions here). CI runs 3.12 and also 3.11
 as a compatibility check. `pyproject.toml` is the single source of truth for dependencies;
@@ -200,8 +227,8 @@ curl -X POST http://127.0.0.1:8000/predict \
 }
 ```
 
-The API returns an **action and the reasons**, not just a number. A retention analyst can act on the
-response without knowing what a probability is.
+The API returns an **action** — and, when the SHAP extra is installed, the fields behind the score — not just a
+number, so a retention analyst can act on it without knowing what a probability is.
 
 ### Why this score? (SHAP drivers)
 
@@ -254,9 +281,10 @@ The image is based on `python:3.12.7-slim-bookworm` (pinned by digest), runs as 
 has a `HEALTHCHECK` on `/health/ready`, installs with the pinned `constraints.txt` (including
 the `explain` extra; build with `--build-arg EXTRAS=` for a slim image without SHAP drivers), and
 trains the model at build time, so the container starts ready to serve. Pass
-`--build-arg GIT_SHA=$(git rev-parse --short HEAD)` to record the commit in the model report. CI builds
-this image, starts it, and runs [`scripts/smoke_test.sh`](scripts/smoke_test.sh) against
-`/health/ready` and `/predict`.
+`--build-arg GIT_SHA=$(git rev-parse --short HEAD)` to record the commit in the model version (without it the
+version reads `unknown-<time>`; the build context has no `.git`). CI builds
+this image with the commit SHA, starts it, runs [`scripts/smoke_test.sh`](scripts/smoke_test.sh) against
+`/health/ready` and `/predict`, and checks that `/model-info` reports that commit.
 
 ### Deployment
 
@@ -271,13 +299,16 @@ startCommand: uvicorn churnguard.api:app --host 0.0.0.0 --port $PORT
 is always produced by the exact scikit-learn build that will load it, sidestepping version-skew
 bugs — and every deploy re-proves that the pipeline runs end to end on a clean machine.
 
-It worked at the previous commit: the deployed instance returned `0.8336` (pre-Fix-1 model) for the customer above, byte-identical to a local
-run on a different OS and Python version. That is what the fixed `random_state` is for.
+**Checked against the live instance (https://churn-guard-api.onrender.com) on 2026-10-02:** `/health/live`,
+`/health/ready`, `/model-info`, `/metrics` and `/predict` all respond, and `/predict` returns `top_drivers`. The sample
+customer above scores `0.7092` there — the same as a local run, so the fixed seed and pinned libraries reproduce the
+probability across Windows/3.11 and Linux/Render. The threshold agrees only to about 10 decimal places
+(0.38369581667 live vs 0.38369581670 local): same metrics, not bit-identical floats. `/model-info` shows which commit
+the running model was built from (`model_version` is `<short commit>-<UTC time>`); the commit comes from `GIT_SHA`
+or Render's `RENDER_GIT_COMMIT` because neither a Docker build nor a Render build has a `.git` directory.
 
 Pushing to `main` triggers CI and a redeploy. Free instances sleep after 15 minutes idle, so the
 first request back takes ~50 seconds.
-
----
 
 ## How it works
 
@@ -327,18 +358,18 @@ churn-guard/
 │   ├── drift.py        drift detection, demo, optional Evidently HTML report
 │   ├── survival.py     Kaplan-Meier + Cox time-to-churn analysis (optional extra)
 │   └── api.py          FastAPI serving layer
-├── tests/              139 tests: data, validation, provenance, features, costs, API, drift, survival, training
+├── tests/              150 tests: data, validation, provenance, features, costs, API, drift, survival, training
 ├── reports/            metrics.json + generated figures
 ├── models/             fitted pipeline + model card
 ├── .github/workflows/  CI on Python 3.12 (production) and 3.11 (compatibility)
 ├── render.yaml         free-tier deployment blueprint
 ├── constraints.txt     pinned dependency versions (generated from pyproject.toml)
-├── scripts/            smoke_test.sh (used by the CI container job)
+├── scripts/            smoke_test.sh (CI container job), investigate_permutation_importance.py
+├── docs/               DECISIONS.md — one entry per fix: what, why, trade-off
+├── CHANGELOG.md        before/after numbers for every fix
 ├── Dockerfile
 └── Makefile
 ```
-
----
 
 ## Engineering decisions worth defending
 
@@ -362,92 +393,49 @@ threshold is tuned on a separate validation split, searching every unique predic
 headline profit never saw test labels when its threshold was picked. The first version of this
 project tuned the threshold on the test set; fixing that moved the headline from +$16,250 to +$15,900.
 
-**Permutation importance, not `.coef_`.** Coefficients on one-hot encoded, scaled features are easy
-to misread. Permutation importance is measured on held-out data and answers the question a
-stakeholder actually asks: *how much worse is this model without that column?*
-
+**Permutation importance, not `.coef_` — with linked fields shuffled together.** Coefficients on one-hot
+encoded, scaled features are easy to misread, and permutation importance is measured on held-out data. But a
+naive per-column shuffle is wrong when features are computed from each other: it reported `tenure` as costing
+0.375 AUC, which is impossible (see [What the model relies on](#what-the-model-relies-on)). `tenure` and
+`TotalCharges` are now shuffled as one block. It is still a statement about the model, not about causes.
 ---
 
-## Testing
+## Time to churn
+
+![Kaplan-Meier survival curves](reports/figures/survival_km.png)
+
+The classifier answers *whether* a customer looks like a churner. Survival analysis answers *when*,
+using tenure as the clock ([`survival.py`](src/churnguard/survival.py); full write-up in
+[`reports/survival_summary.md`](reports/survival_summary.md)). Customers who haven't left are
+*censored*: we only know they lasted at least their tenure.
+
+**Hazard vs probability.** A *probability* says how likely a customer is flagged as churned. A
+*hazard* is the rate of leaving at a given tenure among customers still active then, so a hazard ratio
+of 2 means "leaves at twice the rate at any given tenure", not "twice as likely to ever leave".
+
+**Key finding: the contract is the main time-to-churn split.** Of month-to-month customers, 70.3% are
+still active at 12 months and 49.1% at 36 (median tenure at churn: 35 months). For one-year contracts
+the figures are 99.1% and 95.9%; for two-year, 100.0% and 99.9%. Fiber-optic customers fall faster than
+DSL (78.4% vs 86.8% active at 12 months). In a Cox model fit on the training split, holding the other
+covariates fixed, a two-year contract has a hazard ratio of 0.07 and a one-year contract 0.22 relative to
+month-to-month; fiber optic is 1.58 relative to DSL and paying by electronic check is 1.94.
+
+- **Concordance 0.855 on validation** (0.861 on train; 0.5 is chance). It measures how well the model
+  orders who leaves first, which is a different question from ROC-AUC, so the two numbers are not
+  comparable.
+- **Proportional hazards partly fails.** The Schoenfeld test flags 2 of 13 covariates at p < 0.01:
+  `Contract_One year` (p = 0.0002) and `n_addon_services` (p = 0.0002). For those, one hazard ratio is
+  an average over an effect that changes with tenure. The one-year curve declines slowly until about 50 months
+  and then drops steeply (to roughly 57% by month 72), which is what a changing effect looks like. Read
+  those two ratios as summaries; the Kaplan-Meier curves do not assume proportionality.
+- `TotalCharges` is left out of the Cox model because it is about tenure × monthly charge and would
+  leak the clock into the covariates. The 11 tenure-0 customers are dropped (no time at risk).
+- These are associations in observational data, not effects of changing a contract.
 
 ```bash
-pytest -v                                   # everything (~1 min)
-pytest -m "not integration"                  # skip the full training run (~6s)
-pytest --cov=churnguard --cov-report=term-missing
+pip install -c constraints.txt ".[analysis]"   # lifelines; not needed to serve the API
+python -m churnguard.survival                  # writes reports/survival_summary.{md,json} and figures
 ```
-
-139 tests across twelve areas:
-
-- **Data contracts** — the target is binary, the zero-tenure fix holds, the train/validation/test
-  splits are disjoint and stratified, and neither the target nor the customer ID can leak into features.
-- **Validation** — missing columns, bad target values, malformed numerics, unknown categories and
-  invalid `CostModel` values fail early with a readable message; out-of-range, NaN and infinite API
-  inputs return a clean 422.
-- **Integrity and provenance** — a tampered dataset raises `DatasetIntegrityError`, and the model
-  report contains the git SHA, dataset hash, hyperparameters and library versions.
-- **Feature engineering** — zero tenure never divides by zero, add-on counting is correct.
-- **Cost model** — the confusion-matrix arithmetic, that the tuned threshold never loses to 0.5 on
-  validation, that an optimum between old grid points is found, and that test labels never enter the search, plus ECE and reliability-table checks.
-- **Uncertainty** — the bootstrap is seeded and reproducible, its interval contains the point
-  estimate, and the sensitivity grid's $50 / 30% cell equals the headline profit.
-- **Operations** — liveness stays up and readiness fails when the model is missing, error bodies are
-  structured, and a scoring failure leaks nothing into the response or the logs.
-- **Survival** — the analysis runs end to end on the cleaned data, validation concordance is stored and
-  above 0.5, Kaplan-Meier curves are valid and correctly ordered, hazard ratios point the expected
-  way, the test split is never used, and the proportional-hazards check covers every covariate.
-- **Drift** — a clean batch is `ok`, a shifted one alerts, unseen categories and missing values are
-  counted, garbled input does not crash, `/drift` works without Evidently, and the module never calls
-  training.
-- **Explanations** — SHAP drivers map to original fields, grouped values are additive, a new
-  month-to-month fiber customer is explained by `tenure` or `Contract`, and scoring survives a missing
-  or failing explainer.
-- **Edge cases** — single-class metrics fail loudly, all-identical predictions, threshold 0 / 1 and
-  ties, and exact hand-computed values for every engineered feature.
-- **API** — runs against a small deterministic fixture model built in `tests/conftest.py`, so it
-  **never needs a trained artifact and is never skipped**. Covers schema validation, batch order,
-  empty / oversized (1,001) / malformed requests, a behavioural check that a new month-to-month fiber
-  customer outranks a two-year contract holder, and a missing or corrupt model file (the API starts
-  degraded: `/health` says so and `/predict` returns 503).
-- **Integration** — `tests/test_integration_training.py` runs the full training twice on the real
-  dataset and asserts the same selected model, threshold and metrics both times.
-
-CI runs lint, a full training run, and the suite with coverage on Python 3.12 and 3.11 on every push.
-Coverage is 78% (measured locally, including the integration test) and CI fails below 77% — the
-floor is the current level, not a target. Most of the uncovered code is figure rendering, which the
-tests skip (`--skip-figures`).
-
----
-
-## Honest limitations
-
-- **Static snapshot.** The classifier predicts *who looks like a churner*, not *when*. The
-  [time-to-churn analysis](#time-to-churn) addresses timing, but only as a report: it is not served
-  from the API, and tenure is a single snapshot, not a customer history.
-- **Cost parameters are assumptions.** The $50 / $500 / 30% figures are illustrative. The framework
-  is the contribution; real numbers would come from the finance team.
-- **Drift monitoring covers inputs and predictions only.** `/drift` cannot see model *performance*
-  decay: that needs the true churn outcomes, which arrive weeks later, and no part of this project
-  collects them. Nothing is scheduled; someone has to call `/drift`.
-- **The 30% offer success rate is uncausal.** Properly measuring it requires an uplift model trained
-  on a randomised holdout, which is the honest next step.
-
-## Roadmap
-
-- [ ] Uplift modelling — target *persuadable* customers, not merely likely churners
-- [x] Survival analysis for time-to-churn (report only, no API endpoint)
-- [x] SHAP values for per-customer explanations in the API response
-- [x] Drift monitoring (inputs and predictions)
-- [ ] Scheduled drift checks, outcome-based performance monitoring and retraining
-
----
-
-## Data
-
-[IBM Telco Customer Churn](https://raw.githubusercontent.com/IBM/telco-customer-churn-on-icp4d/master/data/Telco-Customer-Churn.csv)
-— 7,043 customers, 21 columns, 26.5% churn rate. Downloaded automatically on first run; not
-committed to the repo. The file is verified against a pinned SHA-256 on download and on every load
-(`16320c9c…e91`, 970,457 bytes); a mismatch raises `DatasetIntegrityError` instead of silently
-training on different data.
 
 ## Monitoring
 
@@ -489,43 +477,6 @@ from the demo's own results, not an Evidently screenshot. The Evidently report i
 same tests and p-value, but it makes its own pass over the data, so its drifted-column list is the one
 to cross-check against, not a second opinion on the status.
 
-## Time to churn
-
-![Kaplan-Meier survival curves](reports/figures/survival_km.png)
-
-The classifier answers *whether* a customer looks like a churner. Survival analysis answers *when*,
-using tenure as the clock ([`survival.py`](src/churnguard/survival.py); full write-up in
-[`reports/survival_summary.md`](reports/survival_summary.md)). Customers who haven't left are
-*censored*: we only know they lasted at least their tenure.
-
-**Hazard vs probability.** A *probability* says how likely a customer is flagged as churned. A
-*hazard* is the rate of leaving at a given tenure among customers still active then, so a hazard ratio
-of 2 means "leaves at twice the rate at any given tenure", not "twice as likely to ever leave".
-
-**Key finding: the contract is the main time-to-churn split.** Of month-to-month customers, 70.3% are
-still active at 12 months and 49.1% at 36 (median tenure at churn: 35 months). For one-year contracts
-the figures are 99.1% and 95.9%; for two-year, 100.0% and 99.9%. Fiber-optic customers fall faster than
-DSL (78.4% vs 86.8% active at 12 months). In a Cox model fit on the training split, holding the other
-covariates fixed, a two-year contract has a hazard ratio of 0.07 and a one-year contract 0.22 relative to
-month-to-month; fiber optic is 1.58 relative to DSL and paying by electronic check is 1.94.
-
-- **Concordance 0.855 on validation** (0.861 on train; 0.5 is chance). It measures how well the model
-  orders who leaves first, which is a different question from ROC-AUC, so the two numbers are not
-  comparable.
-- **Proportional hazards partly fails.** The Schoenfeld test flags 2 of 13 covariates at p < 0.01:
-  `Contract_One year` (p = 0.0002) and `n_addon_services` (p = 0.0002). For those, one hazard ratio is
-  an average over an effect that changes with tenure. The one-year curve declines slowly until about 50 months
-  and then drops steeply (to roughly 57% by month 72), which is what a changing effect looks like. Read
-  those two ratios as summaries; the Kaplan-Meier curves do not assume proportionality.
-- `TotalCharges` is left out of the Cox model because it is about tenure × monthly charge and would
-  leak the clock into the covariates. The 11 tenure-0 customers are dropped (no time at risk).
-- These are associations in observational data, not effects of changing a contract.
-
-```bash
-pip install -c constraints.txt ".[analysis]"   # lifelines; not needed to serve the API
-python -m churnguard.survival                  # writes reports/survival_summary.{md,json} and figures
-```
-
 ## Input validation
 
 Bad data or config fails early instead of training on garbage:
@@ -541,6 +492,14 @@ Bad data or config fails early instead of training on garbage:
   `TotalCharges` above one month's charge. 422 responses list the field and message only; they do not
   echo the rejected input back.
 
+## Data
+
+[IBM Telco Customer Churn](https://raw.githubusercontent.com/IBM/telco-customer-churn-on-icp4d/master/data/Telco-Customer-Churn.csv)
+— 7,043 customers, 21 columns, 26.5% churn rate. Downloaded automatically on first run; not
+committed to the repo. The file is verified against a pinned SHA-256 on download and on every load
+(`16320c9c…e91`, 970,457 bytes); a mismatch raises `DatasetIntegrityError` instead of silently
+training on different data.
+
 ## Model provenance
 
 Every training run writes a `provenance` block to `reports/metrics.json` (served by `/metrics`):
@@ -550,6 +509,109 @@ pandas / scikit-learn / SciPy / joblib / Python versions, and train / validation
 class rates. The committed report was produced on Python 3.11.9 with the pinned versions; the same
 metrics came out of an earlier run on Python 3.14 with unpinned latest libraries, so the results
 are not sensitive to these versions on this machine. They have not been re-run on 3.12 or Linux.
+
+---
+
+## Testing
+
+```bash
+pytest -v                                   # everything (~3 min)
+pytest -m "not integration"                  # skip the full training run (~15s)
+pytest --cov=churnguard --cov-report=term-missing
+```
+
+150 tests across twelve areas:
+
+- **Data contracts** — the target is binary, the zero-tenure fix holds, the train/validation/test
+  splits are disjoint and stratified, and neither the target nor the customer ID can leak into features.
+- **Validation** — missing columns, bad target values, malformed numerics, unknown categories and
+  invalid `CostModel` values fail early with a readable message; out-of-range, NaN and infinite API
+  inputs return a clean 422.
+- **Integrity and provenance** — a tampered dataset raises `DatasetIntegrityError`, and the model
+  report contains the git SHA, dataset hash, hyperparameters and library versions.
+- **Feature engineering** — zero tenure never divides by zero, add-on counting is correct, and
+  linked fields are permuted together so importance is not inflated by impossible rows.
+- **Cost model** — the confusion-matrix arithmetic, that the tuned threshold never loses to 0.5 on
+  validation, that an optimum between old grid points is found, and that test labels never enter the search, plus ECE and reliability-table checks.
+- **Uncertainty** — the bootstrap is seeded and reproducible, its interval contains the point
+  estimate, and the sensitivity grid's $50 / 30% cell equals the headline profit.
+- **Operations** — liveness stays up and readiness fails when the model is missing, error bodies are
+  structured, and a scoring failure leaks nothing into the response or the logs.
+- **Survival** — the analysis runs end to end on the cleaned data, validation concordance is stored and
+  above 0.5, Kaplan-Meier curves are valid and correctly ordered, hazard ratios point the expected
+  way, the test split is never used, and the proportional-hazards check covers every covariate.
+- **Drift** — a clean batch is `ok`, a shifted one alerts, unseen categories and missing values are
+  counted, garbled input does not crash, `/drift` works without Evidently, and the module never calls
+  training.
+- **Explanations** — SHAP drivers map to original fields, grouped values are additive, a new
+  month-to-month fiber customer is explained by `tenure` or `Contract`, and scoring survives a missing
+  or failing explainer.
+- **Edge cases** — single-class metrics fail loudly, all-identical predictions, threshold 0 / 1 and
+  ties, and exact hand-computed values for every engineered feature.
+- **API** — runs against a small deterministic fixture model built in `tests/conftest.py`, so it
+  **never needs a trained artifact and is never skipped**. Covers schema validation, batch order,
+  empty / oversized (1,001) / malformed requests, a behavioural check that a new month-to-month fiber
+  customer outranks a two-year contract holder, and a missing or corrupt model file (the API starts
+  degraded: `/health` says so and `/predict` returns 503).
+- **Integration** — `tests/test_integration_training.py` runs the full training twice on the real
+  dataset and asserts the same selected model, threshold and metrics both times.
+
+CI runs lint, a full training run, and the suite with coverage on Python 3.12 and 3.11 on every push.
+Coverage is 80.5% (859 of 1,067 statements; measured locally on Python 3.11 with the integration test, 2026-10-02)
+and CI fails below 79% — the floor sits just under the current level, it is not a target. Most of the
+uncovered code is figure rendering and the Evidently report, which the tests mostly skip.
+
+## What this project does not prove
+
+- **That the offers work.** The 30% save rate is an assumption. Nothing here measures whether an offer changes
+  anyone's decision; that takes a randomised test (hold some at-risk customers out, compare outcomes).
+- **That the campaign would make money.** The +$15,900 is the model's targeting plus assumed costs. The
+  [sensitivity grid](#how-sensitive-is-this-to-the-assumptions) shows the campaign *losing* money in 45 of 144
+  cost/save-rate combinations. Real ROI needs real offer costs, real save rates and real margins.
+- **That the "drivers" are causes.** Permutation importance, SHAP values and hazard ratios describe what the
+  model uses and what co-occurs with churn in one observational dataset. They do not show that moving a
+  customer onto an annual contract would keep them.
+- **That the model holds up in production.** The drift demo is a simulation I designed, its thresholds are
+  uncalibrated, and the model has never seen live traffic or confirmed outcomes.
+- **That it generalises.** One public telecom dataset, one snapshot, one random split.
+
+## Honest limitations
+
+- **Static snapshot.** The classifier predicts *who looks like a churner*, not *when*. The
+  [time-to-churn analysis](#time-to-churn) addresses timing, but only as a report: it is not served
+  from the API, and tenure is a single snapshot, not a customer history.
+- **Cost parameters are assumptions.** The $50 / $500 / 30% figures are illustrative. The framework
+  is the contribution; real numbers would come from the finance team.
+- **One public dataset.** IBM's Telco sample (7,043 customers, one snapshot). Nothing here shows the model
+  transfers to another company, market or period.
+- **Drift monitoring covers inputs and predictions only.** `/drift` cannot see model *performance*
+  decay: that needs the true churn outcomes, which arrive weeks later, and no part of this project
+  collects them. Nothing is scheduled; someone has to call `/drift`.
+- **The live demo has no authentication and no rate limit.**
+- **Fairness and segment-level performance were not examined.** Overall metrics can hide a model that works
+  worse for some customer groups.
+- **Validation was reused.** It picks the calibration variant and tunes the threshold, so the validation figures
+  carry a small selection effect; the test figures do not.
+
+## Roadmap
+
+- [ ] Uplift modelling — target *persuadable* customers, not merely likely churners (needs a randomised offer test)
+- [x] Time-to-churn analysis (Kaplan-Meier + Cox; report only)
+- [x] Per-customer SHAP drivers in the API response (optional extra; active on the live demo)
+- [x] Drift monitoring for inputs and predictions
+- [ ] Outcome-based performance monitoring, scheduled drift checks and retraining
+
+## Terms used
+
+| Term | Meaning here |
+|---|---|
+| **ROC-AUC / PR-AUC** | How well the model ranks churners above stayers (1 is perfect, 0.5 is a coin flip for ROC-AUC) |
+| **Brier score / ECE** | How close predicted probabilities are to observed rates (lower is better) |
+| **Blanket campaign** | Send the offer to every customer; the no-model baseline |
+| **Threshold** | Predicted-probability cut-off above which a customer gets an offer; chosen to maximise campaign profit |
+| **SHAP value** | A field's contribution to one customer's score, in log-odds, relative to an average customer |
+| **Hazard ratio** | Relative rate of leaving at any given tenure among customers still active (2 = twice the rate) |
+| **Censored** | A customer who has not churned yet: we know they lasted at least their tenure, no more |
 
 ## License
 
