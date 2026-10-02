@@ -186,7 +186,7 @@ cd churn-guard
 
 pip install -c constraints.txt -e ".[dev,explain]"   # pinned install (+SHAP drivers)
 python -m churnguard.train  # download data, train, evaluate, write figures (~35s)
-pytest                      # 150 tests (~3 min; add -m "not integration" to skip the training run)
+pytest                      # 154 tests (~3 min; add -m "not integration" to skip the training run)
 uvicorn churnguard.api:app --reload
 ```
 
@@ -358,7 +358,7 @@ churn-guard/
 │   ├── drift.py        drift detection, demo, optional Evidently HTML report
 │   ├── survival.py     Kaplan-Meier + Cox time-to-churn analysis (optional extra)
 │   └── api.py          FastAPI serving layer
-├── tests/              150 tests: data, validation, provenance, features, costs, API, drift, survival, training
+├── tests/              154 tests: data, validation, provenance, features, costs, API, drift, survival, training
 ├── reports/            metrics.json + generated figures
 ├── models/             fitted pipeline + model card
 ├── .github/workflows/  CI on Python 3.12 (production) and 3.11 (compatibility)
@@ -503,7 +503,8 @@ training on different data.
 ## Model provenance
 
 Every training run writes a `provenance` block to `reports/metrics.json` (served by `/metrics`):
-`model_version` (`<git sha>-<UTC timestamp>`), git SHA and whether the tree was dirty, dataset URL and
+`model_version` (`<git sha>-<UTC timestamp>`), git SHA and whether the code tree was dirty (captured before training writes anything, and ignoring `reports/` and
+`models/`, so it is `true` only if source files differed from the commit; `null` when there is no `.git`), dataset URL and
 SHA-256, selected estimator and its hyperparameters, calibration and threshold methods, NumPy /
 pandas / scikit-learn / SciPy / joblib / Python versions, and train / validation / test counts with
 class rates. The committed report was produced on Python 3.11.9 with the pinned versions; the same
@@ -520,7 +521,7 @@ pytest -m "not integration"                  # skip the full training run (~15s)
 pytest --cov=churnguard --cov-report=term-missing
 ```
 
-150 tests across twelve areas:
+154 tests across twelve areas:
 
 - **Data contracts** — the target is binary, the zero-tenure fix holds, the train/validation/test
   splits are disjoint and stratified, and neither the target nor the customer ID can leak into features.

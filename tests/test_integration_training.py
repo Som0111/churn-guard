@@ -53,3 +53,30 @@ def test_trained_model_explains_a_high_risk_customer(tmp_path, monkeypatch):
     drivers = explainer.drivers(frame)[0]
     assert len(drivers) == 3
     assert {d["feature"] for d in drivers} & {"tenure", "Contract"}
+
+
+def test_dirty_flag_is_captured_before_training_writes_anything(tmp_path, monkeypatch):
+    """A clean tree must stay 'clean' in the report even though training creates files."""
+    for name in ("GIT_SHA", "RENDER_GIT_COMMIT"):
+        monkeypatch.delenv(name, raising=False)
+    out = tmp_path / "d"
+    out.mkdir()
+    outputs = [out / "model.joblib", out / "model_card.json", out / "metrics.json", out / "calibration.json"]
+    for attr, path in zip(("MODEL_PATH", "METADATA_PATH", "METRICS_PATH", "CALIBRATION_PATH"), outputs, strict=True):
+        monkeypatch.setattr(config, attr, path)
+
+    status_calls = []
+
+    def fake_git(*args):
+        if args[0] == "rev-parse":
+            return "abc1234"
+        # a late check would see the files this very run wrote and call the tree dirty
+        status_calls.append(any(p.exists() for p in outputs))
+        return "M reports/metrics.json" if status_calls[-1] else ""
+
+    monkeypatch.setattr(train, "_git", fake_git)
+    report = train.main(skip_figures=True)
+
+    assert status_calls == [False]  # asked exactly once, before any output existed
+    assert report["provenance"]["git_dirty"] is False
+    assert report["provenance"]["git_sha"] == "abc1234"

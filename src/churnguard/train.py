@@ -261,6 +261,11 @@ def plot_importance(drivers: list[dict]) -> str:
     return evaluate._repo_relative(path)
 
 
+# Outputs of training itself. They must never make the tree look dirty: the question is
+# whether the CODE that trained the model matched the commit, not whether training ran.
+GENERATED_PATHS = ("reports", "models")
+
+
 def _commit_sha() -> tuple[str, bool | None]:
     """(short SHA, tree dirty?) for the code being trained.
 
@@ -276,7 +281,9 @@ def _commit_sha() -> tuple[str, bool | None]:
     sha = _git("rev-parse", "--short", "HEAD")
     if sha is None:
         return "unknown", None
-    status = _git("status", "--porcelain")
+    status = _git(
+        "status", "--porcelain", "--", ".", *[f":(exclude){path}" for path in GENERATED_PATHS]
+    )
     return sha, None if status is None else bool(status)
 
 
@@ -296,10 +303,18 @@ def _final_estimator(model):
 
 
 def build_provenance(
-    model, calibration: str, splits: dict[str, pd.Series], trained_at: datetime
+    model,
+    calibration: str,
+    splits: dict[str, pd.Series],
+    trained_at: datetime,
+    commit: tuple[str, bool | None] | None = None,
 ) -> dict:
-    """Everything needed to say exactly which data, code and libraries made a model."""
-    git_sha, git_dirty = _commit_sha()
+    """Everything needed to say exactly which data, code and libraries made a model.
+
+    ``commit`` is ``(short sha, dirty)`` as captured BEFORE training wrote anything;
+    if omitted it is looked up now.
+    """
+    git_sha, git_dirty = commit or _commit_sha()
     stamp = trained_at.strftime("%Y%m%dT%H%M%SZ")
     params = {
         k: v if isinstance(v, (int, float, str, bool, type(None))) else str(v)
@@ -332,6 +347,8 @@ def build_provenance(
 
 
 def main(skip_figures: bool = False) -> dict:
+    # First thing, before any file is written: record which code is being trained.
+    commit = _commit_sha()
     config.ensure_dirs()
 
     logger.info("Loading data")
@@ -406,6 +423,7 @@ def main(skip_figures: bool = False) -> dict:
         calibration,
         {"train": y_train, "validation": y_val, "test": y_test},
         trained_at,
+        commit,
     )
 
     joblib.dump(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from datetime import UTC, datetime
 
 import numpy as np
@@ -79,8 +81,8 @@ def test_git_sha_beats_render_commit(no_git, monkeypatch):
 def test_git_is_used_when_the_environment_says_nothing(monkeypatch):
     monkeypatch.delenv("GIT_SHA", raising=False)
     monkeypatch.delenv("RENDER_GIT_COMMIT", raising=False)
-    answers = {("rev-parse", "--short", "HEAD"): "abc1234", ("status", "--porcelain"): ""}
-    monkeypatch.setattr(train, "_git", lambda *a: answers[a])
+    answers = {"rev-parse": "abc1234", "status": ""}  # keyed by subcommand: status carries pathspecs
+    monkeypatch.setattr(train, "_git", lambda *a: answers[a[0]])
     assert train._commit_sha() == ("abc1234", False)
 
 
@@ -99,3 +101,70 @@ def test_model_version_carries_the_env_commit(no_git, monkeypatch):
     prov = build_provenance(model, "no_class_weight", {"train": y, "validation": y, "test": y}, when)
     assert prov["model_version"] == "deadbee-20260102T030405Z"
     assert prov["git_dirty"] is None
+
+
+# --------------------------------------------------------------------------- #
+# git_dirty must describe the code, not the outputs of the training run
+# --------------------------------------------------------------------------- #
+def test_status_check_ignores_generated_output_paths(monkeypatch):
+    monkeypatch.delenv("GIT_SHA", raising=False)
+    monkeypatch.delenv("RENDER_GIT_COMMIT", raising=False)
+    calls = []
+
+    def fake_git(*args):
+        calls.append(args)
+        return "abc1234" if args[0] == "rev-parse" else ""
+
+    monkeypatch.setattr(train, "_git", fake_git)
+    assert train._commit_sha() == ("abc1234", False)
+    status = next(c for c in calls if c[0] == "status")
+    assert ":(exclude)reports" in status and ":(exclude)models" in status
+
+
+def test_build_provenance_uses_the_commit_it_is_given(monkeypatch):
+    def boom():
+        raise AssertionError("must not look the commit up again after training wrote files")
+
+    monkeypatch.setattr(train, "_commit_sha", boom)
+    rng = np.random.default_rng(0)
+    X = pd.DataFrame(
+        {
+            **{c: rng.uniform(1, 50, 60) for c in config.NUMERIC_FEATURES},
+            **{c: rng.choice(["Yes", "No"], 60) for c in config.CATEGORICAL_FEATURES},
+        }
+    )
+    y = pd.Series(rng.binomial(1, 0.3, 60))
+    model = build_pipeline(candidate_models()["logistic_regression"]).fit(X, y)
+    prov = build_provenance(
+        model, "none", {"train": y, "validation": y, "test": y},
+        datetime(2026, 1, 2, tzinfo=UTC), commit=("abc1234", False),
+    )
+    assert prov["git_sha"] == "abc1234" and prov["git_dirty"] is False
+
+
+@pytest.mark.skipif(shutil.which("git") is None, reason="git not installed")
+def test_real_repo_generated_files_do_not_make_the_tree_dirty(tmp_path, monkeypatch):
+    """A scratch repo: outputs under reports/ and models/ are ignored, code edits are not."""
+    def run(*args):
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
+
+    run("init", "-q")
+    (tmp_path / "code.py").write_text("x = 1\n")
+    (tmp_path / "reports").mkdir()
+    (tmp_path / "reports" / "metrics.json").write_text("{}")
+    run("add", ".")
+    run("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "init")
+
+    for name in ("GIT_SHA", "RENDER_GIT_COMMIT"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(config, "ROOT", tmp_path)
+    assert train._commit_sha()[1] is False
+
+    (tmp_path / "reports" / "metrics.json").write_text('{"changed": true}')  # tracked output edited
+    (tmp_path / "reports" / "new.png").write_text("png")                       # untracked output
+    (tmp_path / "models").mkdir()
+    (tmp_path / "models" / "model_card.json").write_text("{}")
+    assert train._commit_sha()[1] is False
+
+    (tmp_path / "code.py").write_text("x = 2\n")  # a real code change
+    assert train._commit_sha()[1] is True

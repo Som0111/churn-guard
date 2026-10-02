@@ -127,5 +127,8 @@ Eleven fixes, in the order they were made. Each lists what changed and the real 
   `GIT_SHA` (Docker build arg, passed by CI as the first 7 characters of `github.sha`) or `RENDER_GIT_COMMIT`; an empty
   value or the literal `unknown` counts as not provided. `git_dirty` is `null` (not `false`) when it cannot be known.
 - CI now fails if the built image's `/model-info` reports `unknown` or a different commit.
-- Tests 142 → 150 (commit lookup: env var, Render fallback, empty/`unknown` ignored, git fallback, model version).
+- `git_dirty` was `true` even when training started on a clean tree: it was computed after the run had written
+  `reports/` and `models/`. The commit and dirty state are now captured at the very start of `train.main`, before any
+  file is written, and `reports/` and `models/` are excluded from the status check.
+- Tests 142 → 154 (commit lookup: env var, Render fallback, empty/`unknown` ignored, git fallback, model version).
 - Coverage re-measured at **80.5%** (859 of 1,067 statements; it had gone stale at 78%). CI floor raised 77% → 79%.
