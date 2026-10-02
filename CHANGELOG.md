@@ -132,3 +132,11 @@ Eleven fixes, in the order they were made. Each lists what changed and the real 
   file is written, and `reports/` and `models/` are excluded from the status check.
 - Tests 142 → 154 (commit lookup: env var, Render fallback, empty/`unknown` ignored, git fallback, model version).
 - Coverage re-measured at **80.5%** (859 of 1,067 statements; it had gone stale at 78%). CI floor raised 77% → 79%.
+
+## README restructure
+
+- README cut from 619 to 141 lines: pitch, live URL, sample response, five headline numbers, one chart and a
+  three-command quickstart up top; then one figure plus a short read and a link per topic.
+- Deep dives moved verbatim to `docs/`: `methodology.md`, `calibration.md`, `explainability.md`, `survival.md`,
+  `monitoring.md`, `api-and-deployment.md`, `testing.md`, `glossary.md`. "What this project does not prove",
+  "Honest limitations" and the roadmap stay in the README. No numbers changed.
