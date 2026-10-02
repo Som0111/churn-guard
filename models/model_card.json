@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-10-02T05:37:23+00:00",
+  "generated_at": "2026-10-02T16:47:59+00:00",
   "provenance": {
-    "model_version": "018d6a7-20261002T053723Z",
-    "git_sha": "018d6a7",
-    "git_dirty": true,
-    "trained_at": "2026-10-02T05:37:23+00:00",
+    "model_version": "ac9776c-20261002T164759Z",
+    "git_sha": "ac9776c",
+    "git_dirty": false,
+    "trained_at": "2026-10-02T16:47:59+00:00",
     "dataset": {
       "source_url": "https://raw.githubusercontent.com/IBM/telco-customer-churn-on-icp4d/master/data/Telco-Customer-Churn.csv",
       "sha256": "16320c9c1ec72448db59aa0a26a0b95401046bef5d02fd3aeb906448e3055e91"
@@ -43,13 +43,13 @@
       }
     },
     "dependencies": {
-      "numpy": "2.4.6",
-      "pandas": "3.0.6",
-      "scikit-learn": "1.9.1",
-      "scipy": "1.17.1",
-      "joblib": "1.6.0"
+      "numpy": "2.5.1",
+      "pandas": "3.0.5",
+      "scikit-learn": "1.9.0",
+      "scipy": "1.18.0",
+      "joblib": "1.5.3"
     },
-    "python": "3.11.9",
+    "python": "3.14.6",
     "random_state": 42
   },
   "dataset": {
@@ -69,7 +69,7 @@
       "cv_roc_auc_std": 0.0135,
       "cv_pr_auc": 0.6659,
       "cv_f1": 0.6332,
-      "fit_seconds": 5.78
+      "fit_seconds": 6.1
     },
     {
       "model": "random_forest",
@@ -77,7 +77,7 @@
       "cv_roc_auc_std": 0.0116,
       "cv_pr_auc": 0.6713,
       "cv_f1": 0.6325,
-      "fit_seconds": 9.68
+      "fit_seconds": 8.16
     },
     {
       "model": "gradient_boosting",
@@ -85,7 +85,7 @@
       "cv_roc_auc_std": 0.0111,
       "cv_pr_auc": 0.6578,
       "cv_f1": 0.6244,
-      "fit_seconds": 3.15
+      "fit_seconds": 2.75
     }
   ],
   "split_sizes": {
