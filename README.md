@@ -8,7 +8,8 @@
 [![Code style: ruff](https://img.shields.io/badge/lint-ruff-orange.svg)](https://github.com/astral-sh/ruff)
 
 **[▶ Try the live API](https://churn-guard-qj1j.onrender.com/docs)** — score a customer in your browser.
-*(Free tier: the first request after a quiet spell takes ~50s to wake the instance.)*
+*(Free tier: the first request after a quiet spell takes ~50s to wake the instance. This public endpoint is an
+**unauthenticated demo**: no API key, no rate limit — do not send real customer data to it.)*
 
 > Most churn projects stop at "85% accuracy." That number is worse than useless here — predicting
 > *nobody* churns scores 73% on this dataset. ChurnGuard optimises the thing the business actually
@@ -161,7 +162,7 @@ cd churn-guard
 
 pip install -c constraints.txt -e ".[dev,explain]"   # pinned install (+SHAP drivers)
 python -m churnguard.train  # download data, train, evaluate, write figures (~35s)
-pytest                      # 129 tests
+pytest                      # 139 tests
 uvicorn churnguard.api:app --reload
 ```
 
@@ -231,8 +232,11 @@ drivers, 35.0 ms with.
 | `GET /` | Redirects to the interactive docs |
 | `POST /predict` | Score one customer |
 | `POST /predict/batch` | Score up to 1,000 in one call |
-| `GET /health` | Liveness + which model artifact is loaded |
-| `GET /metrics` | Full evaluation report from the last training run |
+| `GET /health/live` | Process is up (says nothing about the model) |
+| `GET /health/ready` | 200 only when a model is loaded, otherwise 503 |
+| `GET /health` | Combined status; kept for Render's health check |
+| `GET /model-info` | Model version, training time, threshold, dataset SHA-256, calibration method |
+| `GET /metrics` | Compact summary of held-out results (the full report stays in `reports/metrics.json`) |
 | `POST /drift` | Compare a recent batch of raw records to the training reference |
 
 ### Docker
@@ -242,10 +246,17 @@ docker build -t churnguard .
 docker run -p 8000:8000 churnguard
 ```
 
-The image is based on `python:3.12.7-slim-bookworm`, installs with the pinned `constraints.txt` (including
+Errors share one shape, `{"detail": ..., "error_code": ...}`. A scoring failure returns a generic 500 and
+the server log records only the exception class and batch size — never the request or the exception
+message, which can quote customer values.
+
+The image is based on `python:3.12.7-slim-bookworm` (pinned by digest), runs as a non-root user,
+has a `HEALTHCHECK` on `/health/ready`, installs with the pinned `constraints.txt` (including
 the `explain` extra; build with `--build-arg EXTRAS=` for a slim image without SHAP drivers), and
 trains the model at build time, so the container starts ready to serve. Pass
-`--build-arg GIT_SHA=$(git rev-parse --short HEAD)` to record the commit in the model report.
+`--build-arg GIT_SHA=$(git rev-parse --short HEAD)` to record the commit in the model report. CI builds
+this image, starts it, and runs [`scripts/smoke_test.sh`](scripts/smoke_test.sh) against
+`/health/ready` and `/predict`.
 
 ### Deployment
 
@@ -316,12 +327,13 @@ churn-guard/
 │   ├── drift.py        drift detection, demo, optional Evidently HTML report
 │   ├── survival.py     Kaplan-Meier + Cox time-to-churn analysis (optional extra)
 │   └── api.py          FastAPI serving layer
-├── tests/              129 tests: data, validation, provenance, features, costs, API, drift, survival, training
+├── tests/              139 tests: data, validation, provenance, features, costs, API, drift, survival, training
 ├── reports/            metrics.json + generated figures
 ├── models/             fitted pipeline + model card
 ├── .github/workflows/  CI on Python 3.12 (production) and 3.11 (compatibility)
 ├── render.yaml         free-tier deployment blueprint
 ├── constraints.txt     pinned dependency versions (generated from pyproject.toml)
+├── scripts/            smoke_test.sh (used by the CI container job)
 ├── Dockerfile
 └── Makefile
 ```
@@ -364,7 +376,7 @@ pytest -m "not integration"                  # skip the full training run (~6s)
 pytest --cov=churnguard --cov-report=term-missing
 ```
 
-129 tests across eleven areas:
+139 tests across twelve areas:
 
 - **Data contracts** — the target is binary, the zero-tenure fix holds, the train/validation/test
   splits are disjoint and stratified, and neither the target nor the customer ID can leak into features.
@@ -378,6 +390,8 @@ pytest --cov=churnguard --cov-report=term-missing
   validation, that an optimum between old grid points is found, and that test labels never enter the search, plus ECE and reliability-table checks.
 - **Uncertainty** — the bootstrap is seeded and reproducible, its interval contains the point
   estimate, and the sensitivity grid's $50 / 30% cell equals the headline profit.
+- **Operations** — liveness stays up and readiness fails when the model is missing, error bodies are
+  structured, and a scoring failure leaks nothing into the response or the logs.
 - **Survival** — the analysis runs end to end on the cleaned data, validation concordance is stored and
   above 0.5, Kaplan-Meier curves are valid and correctly ordered, hazard ratios point the expected
   way, the test split is never used, and the proportional-hazards check covers every covariate.

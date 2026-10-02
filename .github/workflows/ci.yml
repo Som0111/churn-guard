@@ -42,3 +42,26 @@ jobs:
         with:
           name: metrics-py${{ matrix.python-version }}
           path: reports/metrics.json
+
+  container:
+    # Build the production image, start it, and hit it over HTTP the way a user would.
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build --build-arg GIT_SHA=${{ github.sha }} -t churnguard:ci .
+
+      - name: Start container
+        run: docker run -d --name churnguard -p 8000:8000 churnguard:ci
+
+      - name: Smoke test (/health/ready and /predict)
+        run: bash scripts/smoke_test.sh http://localhost:8000
+
+      - name: Runs as a non-root user
+        run: test "$(docker exec churnguard id -u)" != "0"
+
+      - name: Container logs
+        if: always()
+        run: docker logs churnguard

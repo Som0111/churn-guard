@@ -21,6 +21,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, model_validator
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from churnguard import __version__, config, drift, explain
 
@@ -173,6 +174,35 @@ app = FastAPI(
 )
 
 
+ERROR_CODES = {
+    404: "not_found",
+    405: "method_not_allowed",
+    422: "validation_error",
+    500: "internal_error",
+    503: "model_unavailable",
+}
+
+
+def _error(status: int, detail, code: str | None = None) -> JSONResponse:
+    """Every error body is ``{"detail": ..., "error_code": ...}``."""
+    return JSONResponse(
+        status_code=status,
+        content={"detail": detail, "error_code": code or ERROR_CODES.get(status, "error")},
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error(_request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    return _error(exc.status_code, exc.detail)
+
+
+@app.exception_handler(Exception)
+async def unexpected_error(_request: Request, exc: Exception) -> JSONResponse:
+    # Class name only: exception messages can quote the customer data that caused them.
+    logger.error("Unhandled %s", type(exc).__name__)
+    return _error(500, "Internal server error.")
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error(_request: Request, exc: RequestValidationError) -> JSONResponse:
     """Readable 422s: field + message only.
@@ -183,7 +213,7 @@ async def validation_error(_request: Request, exc: RequestValidationError) -> JS
     detail = [
         {"loc": list(e["loc"]), "msg": e["msg"], "type": e["type"]} for e in exc.errors()
     ]
-    return JSONResponse(status_code=422, content={"detail": detail})
+    return _error(422, detail)
 
 
 def _build_explainer(artifact: dict):
@@ -228,7 +258,12 @@ def _score(frame: pd.DataFrame) -> list[Prediction]:
             detail="Model not loaded. Run `python -m churnguard.train`, then restart.",
         )
 
-    probabilities = MODEL["pipeline"].predict_proba(frame)[:, 1]
+    try:
+        probabilities = MODEL["pipeline"].predict_proba(frame)[:, 1]
+    except Exception as exc:
+        # Never log the payload or the exception message (it can quote customer values).
+        logger.error("Inference failed (%s) on a batch of %d", type(exc).__name__, len(frame))
+        raise HTTPException(status_code=500, detail="Scoring failed. The error has been logged.") from exc
     threshold = float(MODEL["threshold"])
 
     drivers = _drivers(frame)
@@ -256,7 +291,7 @@ def root() -> RedirectResponse:
 
 @app.get("/health", tags=["ops"])
 def health() -> dict:
-    """Liveness plus which artifact is actually in memory."""
+    """Combined status, kept for Render's health check and older callers."""
     return {
         "status": "ok" if MODEL else "degraded",
         "model_loaded": bool(MODEL),
@@ -266,12 +301,68 @@ def health() -> dict:
     }
 
 
+@app.get("/health/live", tags=["ops"])
+def live() -> dict:
+    """The process is up. Says nothing about the model."""
+    return {"status": "alive"}
+
+
+@app.get("/health/ready", tags=["ops"])
+def ready() -> JSONResponse:
+    """Ready to score: 200 only when a model is loaded, otherwise 503."""
+    if not MODEL:
+        return JSONResponse(status_code=503, content={"status": "not_ready", "model_loaded": False})
+    return JSONResponse(
+        content={"status": "ready", "model_loaded": True, "model_version": MODEL.get("model_version")}
+    )
+
+
+@app.get("/model-info", tags=["ops"])
+def model_info() -> dict:
+    """Which model is serving: version, when it was trained, on what data."""
+    if not MODEL:
+        raise HTTPException(status_code=503, detail="Model not loaded.")
+    provenance = MODEL.get("provenance") or {}
+    return {
+        "model_version": MODEL.get("model_version"),
+        "model_name": MODEL.get("model_name"),
+        "trained_at": provenance.get("trained_at"),
+        "threshold": MODEL.get("threshold"),
+        "dataset_sha256": (provenance.get("dataset") or {}).get("sha256"),
+        "calibration_method": MODEL.get("calibration"),
+        "shap_drivers_available": MODEL.get("explainer") is not None,
+    }
+
+
 @app.get("/metrics", tags=["ops"])
 def metrics() -> dict:
-    """The full evaluation report produced by the last training run."""
+    """A compact summary of the last training run's held-out results.
+
+    The full offline report stays in ``reports/metrics.json``; this endpoint does
+    not serve it.
+    """
     if not config.METRICS_PATH.exists():
         raise HTTPException(status_code=404, detail="No metrics report found.")
-    return json.loads(config.METRICS_PATH.read_text(encoding="utf-8"))
+    report = json.loads(config.METRICS_PATH.read_text(encoding="utf-8"))
+    test = report.get("test_metrics_tuned_threshold", {})
+    impact = report.get("business_impact", {})
+    interval = (report.get("uncertainty") or {}).get("profit_model") or {}
+    return {
+        "model_version": (report.get("provenance") or {}).get("model_version"),
+        "selected_model": report.get("selected_model"),
+        "calibration_method": report.get("calibration_method"),
+        "threshold": test.get("threshold"),
+        "test": {
+            k: test.get(k) for k in ("roc_auc", "pr_auc", "brier_score", "ece", "precision", "recall")
+        },
+        "test_campaign_profit": {
+            "model": impact.get("net_benefit_optimal"),
+            "blanket_campaign": impact.get("net_benefit_blanket_campaign"),
+            "do_nothing": 0.0,
+            "model_90pct_interval": [interval.get("low"), interval.get("high")] if interval else None,
+        },
+        "cost_assumptions_not_observed_outcomes": impact.get("assumptions"),
+    }
 
 
 @app.post("/drift", tags=["monitoring"])

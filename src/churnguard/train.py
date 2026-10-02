@@ -377,6 +377,7 @@ def main(skip_figures: bool = False) -> dict:
     joblib.dump(
         {
             "model_version": provenance["model_version"],
+            "provenance": provenance,
             "pipeline": pipeline,
             "threshold": threshold,
             "model_name": best_name,

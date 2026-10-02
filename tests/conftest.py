@@ -61,6 +61,7 @@ def fixture_artifacts(tmp_path_factory):
     joblib.dump(
         {
             "model_version": provenance["model_version"],
+            "provenance": provenance,
             "pipeline": model,
             "threshold": threshold,
             "model_name": "logistic_regression",
